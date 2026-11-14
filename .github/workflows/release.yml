@@ -1,0 +1,117 @@
+name: Release
+
+# A tag like v0.1.0 builds and publishes a release. Running the workflow by hand
+# (Actions > Release > Run workflow) builds the same files without publishing them.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Windows installer and portable zip
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write # build provenance attestation
+      attestations: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+
+      - name: Read the version and check the tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            Write-Error "Tag $env:GITHUB_REF_NAME does not match version $version in package.json"
+            exit 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - run: npm ci
+
+      - name: Fetch the scrcpy server and adb
+        run: npm run fetch-deps -- --with-adb
+
+      - name: Build
+        run: npx tauri build --bundles nsis --config src-tauri/tauri.release.conf.json
+
+      - name: Collect the release files
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $out = New-Item -ItemType Directory -Force release
+          $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          Copy-Item $setup.FullName "$out/Stormcast-$version-x64-setup.exe"
+
+          $portable = New-Item -ItemType Directory -Force portable/Stormcast
+          $exe = Get-ChildItem src-tauri/target/release -Filter *.exe | Select-Object -First 1
+          Copy-Item $exe.FullName "$portable/Stormcast.exe"
+          Copy-Item src-tauri/resources/scrcpy-server "$portable/"
+          Copy-Item -Recurse src-tauri/resources/platform-tools "$portable/"
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.md "$portable/"
+          Compress-Archive -Path $portable -DestinationPath "$out/Stormcast-$version-x64-portable.zip"
+
+          Get-ChildItem $out -File | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content -Encoding ascii "$out/SHA256SUMS.txt"
+          Get-Content "$out/SHA256SUMS.txt"
+
+      # Lets anyone check a download with `gh attestation verify`. Needs a public repository.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ !github.event.repository.private }}
+        with:
+          subject-path: release/Stormcast-*
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stormcast-${{ steps.version.outputs.version }}
+          path: release/
+          if-no-files-found: error
+
+  publish:
+    name: Publish the GitHub release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" release/*
+          --repo "$GITHUB_REPOSITORY"
+          --title "Stormcast ${{ needs.build.outputs.version }}"
+          --generate-notes
+          --verify-tag

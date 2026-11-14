@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/scrcpy-server": "scrcpy-server",
+      "resources/platform-tools/*": "platform-tools/",
+      "../LICENSE": "LICENSE",
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md"
+    }
+  }
+}
