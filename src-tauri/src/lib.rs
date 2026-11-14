@@ -1,7 +1,8 @@
-//! Stormcast mirrors an Android screen to Windows over USB.
+//! Stormcast mirrors and controls an Android screen from Windows over USB.
 //!
-//! The Rust side finds `adb`, starts the scrcpy server on the device and forwards the
-//! H.264 stream to the web view, which decodes it with WebCodecs (`src/player.ts`).
+//! The Rust side finds `adb`, starts Stormcast's server on the device, forwards the H.264
+//! stream to the web view, which decodes it with WebCodecs (`src/player.ts`), and sends the
+//! web view's input back to the device (`src/control.ts`).
 
 mod adb;
 mod appearance;
@@ -54,6 +55,15 @@ async fn stop_mirror(state: State<'_, MirrorState>) -> Result<(), AppError> {
     Ok(())
 }
 
+/// The web view sends one batch at a time, so the messages reach the device in order.
+#[tauri::command]
+async fn send_control(
+    state: State<'_, MirrorState>,
+    messages: Vec<protocol::Control>,
+) -> Result<(), AppError> {
+    state.send_control(&messages).await
+}
+
 #[tauri::command]
 fn smoke_report(app: AppHandle, report: serde_json::Value) {
     let ok = report["ok"].as_bool().unwrap_or(false);
@@ -103,6 +113,7 @@ pub fn run() {
             list_devices,
             start_mirror,
             stop_mirror,
+            send_control,
             smoke_report
         ])
         .run(tauri::generate_context!())

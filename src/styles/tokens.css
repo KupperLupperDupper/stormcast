@@ -48,6 +48,7 @@
   --p-size-4: 0.25rem;
   --p-size-8: 0.5rem;
   --p-size-16: 1rem;
+  --p-size-20: 1.25rem;
   --p-size-24: 1.5rem;
   --p-size-32: 2rem;
 
@@ -88,6 +89,8 @@
 
   --color-bg: var(--p-neutral-5);
   --color-surface: var(--p-neutral-2);
+  /* Stays solid in the glass skin, for what floats over a panel. */
+  --color-surface-solid: var(--p-neutral-2);
   --color-text: var(--p-neutral-90);
   --color-text-muted: var(--p-neutral-65);
   --color-border: var(--p-black-a8);
@@ -144,6 +147,7 @@
   :root {
     --color-bg: var(--p-neutral-87);
     --color-surface: var(--p-neutral-83);
+    --color-surface-solid: var(--p-neutral-83);
     --color-text: var(--p-neutral-0);
     --color-text-muted: var(--p-neutral-25);
     --color-border: var(--p-white-a10);
@@ -209,6 +213,17 @@
   --mirror-radius: var(--radius-media);
   --mirror-bg: var(--color-media-bg);
   --mirror-shadow: var(--shadow-raised);
+  /* Around the screen while the keyboard controls the device. */
+  --mirror-control-ring: var(--color-accent);
+
+  --icon-size: var(--p-size-20);
+
+  --tooltip-bg: var(--color-surface-solid);
+  /* As far as the button's hit area reaches, so the pointer can move onto the tooltip (A11Y-05). */
+  --tooltip-gap: var(--button-hit-extend);
+  --tooltip-padding-block: var(--space-xxs);
+  --tooltip-padding-inline: var(--space-s);
+  --tooltip-scale-from: 0.95;
 }
 
 /* High contrast: system colours win over every skin. */
@@ -216,6 +231,7 @@
   :root {
     --color-bg: Canvas;
     --color-surface: Canvas;
+    --color-surface-solid: Canvas;
     --color-text: CanvasText;
     --color-text-muted: CanvasText;
     --color-border: CanvasText;

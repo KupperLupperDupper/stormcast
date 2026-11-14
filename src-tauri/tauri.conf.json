@@ -24,7 +24,7 @@
     "homepage": "https://github.com/KupperLupperDupper/stormcast",
     "category": "Utility",
     "shortDescription": "Mirror an Android screen over USB",
-    "longDescription": "Stormcast mirrors the screen of an Android device to Windows over USB, using the scrcpy server on the device.",
+    "longDescription": "Stormcast mirrors the screen of an Android device to Windows over USB and lets you control the device with the mouse, touch and keyboard.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

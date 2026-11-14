@@ -39,6 +39,8 @@ ol {
   position: absolute;
   width: var(--visually-hidden-size);
   height: var(--visually-hidden-size);
+  /* Pulled back over its own size: at the end of the page it would add scroll overflow. */
+  margin: calc(var(--visually-hidden-size) * -1);
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
@@ -291,6 +293,52 @@ ol {
   --button-border: transparent;
 }
 
+/* Square, with the same 48 px hit area (CMP-02). The name is in aria-label and a tooltip (CMP-14). */
+.button--icon {
+  width: var(--button-height);
+  padding: 0;
+}
+
+.icon {
+  flex: none;
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+/* ---------- Tooltip ---------- */
+
+/* In the root overlay with a solid fill, never glass on glass; the top margin is the gap to the button. */
+.tooltip {
+  position: fixed;
+  margin: var(--tooltip-gap) 0 0;
+  padding: var(--tooltip-padding-block) var(--tooltip-padding-inline);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--tooltip-bg);
+  color: var(--color-text);
+  font: var(--type-caption);
+  white-space: nowrap;
+  box-shadow: var(--shadow-raised);
+  transform-origin: top center;
+  /* MOT-05, MOT-06: grows from the button, from 95 %. */
+  animation: tooltip-in var(--motion-fast) var(--ease-out);
+}
+
+.tooltip--above {
+  transform-origin: bottom center;
+}
+
+.tooltip[hidden] {
+  display: none;
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--tooltip-scale-from));
+  }
+}
+
 /* ---------- Progress ---------- */
 
 .progress {
@@ -374,6 +422,30 @@ ol {
   font-variant-numeric: tabular-nums;
 }
 
+.toolbar__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-s);
+}
+
+.control-hint {
+  display: grid;
+  flex-basis: 100%;
+  color: var(--color-text-muted);
+  font: var(--type-caption);
+}
+
+/* Both lines share one cell, so the hint keeps the height of the longer one (LAY-02). */
+.control-hint > * {
+  grid-area: 1 / 1;
+}
+
+/* The keyboard controls the device while the screen has focus; the hint says which applies. */
+.mirror:has(.screen__video:focus) .control-hint__idle,
+.mirror:not(:has(.screen__video:focus)) .control-hint__active {
+  visibility: hidden;
+}
+
 .screen {
   display: grid;
   place-items: center;
@@ -388,4 +460,14 @@ ol {
   border-radius: var(--mirror-radius);
   background: var(--mirror-bg);
   box-shadow: var(--mirror-shadow);
+  /* Every touch goes to the device: the page neither scrolls nor zooms (GES-05). */
+  touch-action: none;
+  user-select: none;
+}
+
+/* Focus, also after a click, means the keyboard controls the device. The ring is outside the
+   picture, never on it, and the hint says the same in words (A11Y-03, COL-03). */
+.screen__video:focus {
+  outline: var(--focus-width) solid var(--mirror-control-ring);
+  outline-offset: var(--focus-offset);
 }

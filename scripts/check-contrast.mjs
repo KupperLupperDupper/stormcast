@@ -69,6 +69,8 @@ const pairs = [
   ["--color-border-strong", "--color-surface", 3, "control border on panel"],
   ["--color-focus", "--color-bg", 3, "focus ring on background"],
   ["--color-focus", "--color-surface", 3, "focus ring on panel"],
+  ["--mirror-control-ring", "--color-bg", 3, "control ring around the screen"],
+  ["--color-text", "--color-surface-solid", 4.5, "tooltip text"],
 ];
 
 let failed = 0;

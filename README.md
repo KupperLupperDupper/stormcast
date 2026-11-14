@@ -1,8 +1,8 @@
 # Stormcast
 
-Stormcast mirrors the screen of an Android device to a Windows PC over USB.
+Stormcast mirrors the screen of an Android device to a Windows PC over USB, and lets you control the device from the PC.
 
-> **Status: early.** Stormcast shows the screen. Mouse and keyboard control, audio and wireless connections are planned.
+> **Status: early.** Stormcast shows and controls the screen. Audio and wireless connections are planned.
 
 ## Install
 
@@ -22,11 +22,21 @@ gh attestation verify Stormcast-0.1.0-x64-setup.exe --repo KupperLupperDupper/st
 - Windows 10 or Windows 11, 64-bit. Windows 11 gets the glass design. Windows 10, and Windows 11 with transparency effects turned off, get a solid design.
 - An Android device with USB debugging turned on. Built for Android 10 and later; tested on Android 16.
 
+## Control
+
+While mirroring, click or tap the screen to control the device:
+
+- The mouse, touch and a pen tap and swipe. Several fingers work too, for example to pinch.
+- The mouse wheel scrolls, and a right click is Back.
+- The keyboard types while the screen has focus. Press Tab to leave the screen. Characters the device's built-in key map lacks, such as æ, ø, å and emoji, are pasted through the device's clipboard, which then holds them.
+- Back, Home, Recent apps and Power are buttons in the toolbar. Power turns the screen on or off.
+
 ## How it works
 
 1. Stormcast carries a small server for the phone (`server/`). When you start mirroring, it copies the server to the device with `adb` and starts it.
 2. The server mirrors the screen into the device's hardware video encoder and sends H.264 back over the USB cable, using [Stormcast's own protocol](docs/PROTOCOL.md).
 3. Stormcast decodes the video on the graphics card with WebCodecs and shows it.
+4. Your input goes the other way on the same connection, and the server injects it on the device.
 
 Nothing is installed on the device, and the server deletes its file as soon as it starts.
 
@@ -51,7 +61,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-Smoke test on a connected device. It mirrors the first ready device for a few seconds, prints `STORMCAST_SMOKE_RESULT` and exits:
+Smoke test on a connected, unlocked device. It mirrors the first ready device, opens Recent apps and goes Back, prints `STORMCAST_SMOKE_RESULT` with the time from input to picture, and exits:
 
 ```powershell
 $env:STORMCAST_SMOKE = "1"; npm run tauri dev

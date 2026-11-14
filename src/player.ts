@@ -16,6 +16,10 @@ const MSG_CONFIG = 2;
 const MSG_FRAME = 3;
 const MSG_END = 4;
 const MAX_DECODER_ERRORS = 3;
+/** waitForChange compares tiny copies of the picture, this many pixels square. */
+const PROBE_SIZE = 16;
+/** Mean difference per colour channel (0–255) that counts as a new picture, far above encoder noise. */
+const CHANGE_THRESHOLD = 12;
 
 export interface PlayerStats {
   codec: string | null;
@@ -56,6 +60,8 @@ export class MirrorPlayer {
   private decoderErrors = 0;
   private drawTimes: number[] = [];
   private closed = false;
+  private probe: OffscreenCanvasRenderingContext2D | null = null;
+  private onDraw: (() => void) | null = null;
 
   constructor(canvas: HTMLCanvasElement, events: PlayerEvents) {
     const ctx = canvas.getContext("2d", { alpha: false });
@@ -108,6 +114,25 @@ export class MirrorPlayer {
       decoderErrors: this.decoderErrors,
       firstFrameMs: this.firstFrameMs === null ? null : Math.round(this.firstFrameMs),
     };
+  }
+
+  /**
+   * Resolves with the time the drawn picture first clearly differs from the current one, or with
+   * null after timeoutMs. The smoke test times input to picture with it.
+   */
+  waitForChange(timeoutMs: number): Promise<number | null> {
+    const before = this.thumbnail();
+    return new Promise((resolve) => {
+      const finish = (time: number | null) => {
+        window.clearTimeout(timer);
+        this.onDraw = null;
+        resolve(time);
+      };
+      const timer = window.setTimeout(() => finish(null), timeoutMs);
+      this.onDraw = () => {
+        if (difference(before, this.thumbnail()) >= CHANGE_THRESHOLD) finish(performance.now());
+      };
+    });
   }
 
   close(): void {
@@ -194,6 +219,14 @@ export class MirrorPlayer {
     frame.close();
     this.drawTimes.push(performance.now());
     if (this.drawTimes.length > 240) this.drawTimes.splice(0, 120);
+    this.onDraw?.();
+  }
+
+  private thumbnail(): Uint8ClampedArray {
+    this.probe ??= new OffscreenCanvas(PROBE_SIZE, PROBE_SIZE).getContext("2d", { willReadFrequently: true });
+    if (!this.probe) throw new Error("Canvas 2D is not available");
+    this.probe.drawImage(this.canvas, 0, 0, PROBE_SIZE, PROBE_SIZE);
+    return this.probe.getImageData(0, 0, PROBE_SIZE, PROBE_SIZE).data;
   }
 
   private onDecoderError(error: DOMException): void {
@@ -206,6 +239,15 @@ export class MirrorPlayer {
     // Start over at the next key frame with the stored SPS/PPS.
     this.createDecoder();
   }
+}
+
+/** Mean absolute difference of the red, green and blue values of two RGBA pictures. */
+function difference(a: Uint8ClampedArray, b: Uint8ClampedArray): number {
+  let sum = 0;
+  for (let i = 0; i < a.length; i += 4) {
+    sum += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+  }
+  return sum / ((a.length / 4) * 3);
 }
 
 function toBytes(packet: unknown): Uint8Array {
