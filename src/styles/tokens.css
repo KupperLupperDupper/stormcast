@@ -1,0 +1,241 @@
+/*
+ * Stormcast design tokens: the only file with raw design values (TOK-01).
+ *
+ *   Layer 1  --p-*                     primitives, used only inside this file (TOK-02)
+ *   Layer 2  --color-*, --space-* …    semantic roles
+ *   Layer 3  --button-*, --mirror-* …  component tokens
+ *
+ * Skins (STY-01): [data-skin="glass"] on Windows 11, [data-skin="solid"] on Windows 10
+ * and whenever transparency effects are off. Only token values differ between skins.
+ * `npm run check:contrast` checks the solid text and control pairs (QA-02).
+ */
+
+/* ---------- Layer 1: primitives ---------- */
+:root {
+  --p-neutral-0: #ffffff;
+  --p-neutral-2: #fbfbfb;
+  --p-neutral-5: #f3f3f3;
+  --p-neutral-25: #c5c5c5;
+  --p-neutral-40: #9a9a9a;
+  --p-neutral-45: #8a8a8a;
+  --p-neutral-65: #5d5d5d;
+  --p-neutral-83: #2b2b2b;
+  --p-neutral-87: #202020;
+  --p-neutral-90: #1b1b1b;
+  --p-neutral-100: #000000;
+  --p-blue-60: #005fb8;
+  --p-blue-30: #60cdff;
+  --p-red-60: #c42b1c;
+  --p-red-30: #ff99a4;
+  --p-green-60: #0f7b0f;
+  --p-green-30: #6ccb5f;
+  --p-amber-60: #9d5d00;
+  --p-amber-20: #fce100;
+
+  --p-black-a4: rgb(0 0 0 / 0.04);
+  --p-black-a8: rgb(0 0 0 / 0.08);
+  --p-black-a10: rgb(0 0 0 / 0.1);
+  --p-white-a6: rgb(255 255 255 / 0.06);
+  --p-white-a10: rgb(255 255 255 / 0.1);
+  --p-white-a12: rgb(255 255 255 / 0.12);
+  --p-white-a55: rgb(255 255 255 / 0.55);
+  --p-white-a62: rgb(255 255 255 / 0.62);
+  --p-dark-a62: rgb(32 32 32 / 0.62);
+  --p-blue-60-a10: rgb(0 95 184 / 0.1);
+  --p-blue-30-a14: rgb(96 205 255 / 0.14);
+
+  --p-size-2: 0.125rem;
+  --p-size-4: 0.25rem;
+  --p-size-8: 0.5rem;
+  --p-size-16: 1rem;
+  --p-size-24: 1.5rem;
+  --p-size-32: 2rem;
+
+  --p-radius-4: 4px;
+  --p-radius-8: 8px;
+  --p-radius-12: 12px;
+  --p-radius-full: 999px;
+
+  --p-font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --p-font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --p-font-mono: "Cascadia Mono", Consolas, monospace;
+  --p-font-size-12: 0.75rem;
+  --p-font-size-14: 0.875rem;
+  --p-font-size-20: 1.25rem;
+  --p-font-size-28: 1.75rem;
+  --p-line-16: 1rem;
+  --p-line-20: 1.25rem;
+  --p-line-28: 1.75rem;
+  --p-line-36: 2.25rem;
+  --p-weight-regular: 400;
+  --p-weight-semibold: 600;
+
+  --p-duration-100: 100ms;
+  --p-duration-200: 200ms;
+  --p-duration-400: 400ms;
+  --p-duration-1400: 1400ms;
+  --p-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --p-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --p-shadow-low: 0 1px 2px rgb(0 0 0 / 0.06), 0 0 1px rgb(0 0 0 / 0.08);
+  --p-shadow-high-light: 0 8px 24px rgb(0 0 0 / 0.16), 0 0 2px rgb(0 0 0 / 0.12);
+  --p-shadow-high-dark: 0 8px 24px rgb(0 0 0 / 0.44), 0 0 2px rgb(0 0 0 / 0.32);
+}
+
+/* ---------- Layer 2: semantic roles (light, solid skin) ---------- */
+:root {
+  color-scheme: light dark;
+
+  --color-bg: var(--p-neutral-5);
+  --color-surface: var(--p-neutral-2);
+  --color-text: var(--p-neutral-90);
+  --color-text-muted: var(--p-neutral-65);
+  --color-border: var(--p-black-a8);
+  --color-border-strong: var(--p-neutral-45);
+  --color-accent: var(--p-blue-60);
+  --color-on-accent: var(--p-neutral-0);
+  --color-danger: var(--p-red-60);
+  --color-success: var(--p-green-60);
+  --color-attention: var(--p-amber-60);
+  --color-focus: var(--p-neutral-90);
+  --color-hover: var(--p-black-a4);
+  --color-pressed: var(--p-black-a8);
+  --color-selected: var(--p-blue-60-a10);
+  --color-track: var(--p-black-a10);
+  --color-code: var(--p-black-a4);
+  --color-media-bg: var(--p-neutral-100);
+
+  --shadow-panel: var(--p-shadow-low);
+  --shadow-raised: var(--p-shadow-high-light);
+
+  --space-xxs: var(--p-size-2);
+  --space-xs: var(--p-size-4);
+  --space-s: var(--p-size-8);
+  --space-m: var(--p-size-16);
+  --space-l: var(--p-size-24);
+  --space-xl: var(--p-size-32);
+
+  --radius-control: var(--p-radius-4);
+  --radius-panel: var(--p-radius-8);
+  --radius-media: var(--p-radius-12);
+  --radius-pill: var(--p-radius-full);
+
+  --type-caption: var(--p-weight-regular) var(--p-font-size-12) / var(--p-line-16) var(--p-font-text);
+  --type-body: var(--p-weight-regular) var(--p-font-size-14) / var(--p-line-20) var(--p-font-text);
+  --type-body-strong: var(--p-weight-semibold) var(--p-font-size-14) / var(--p-line-20) var(--p-font-text);
+  --type-subtitle: var(--p-weight-semibold) var(--p-font-size-20) / var(--p-line-28) var(--p-font-display);
+  --type-title: var(--p-weight-semibold) var(--p-font-size-28) / var(--p-line-36) var(--p-font-display);
+  --type-code: var(--p-weight-regular) var(--p-font-size-14) / var(--p-line-20) var(--p-font-mono);
+
+  --motion-fast: var(--p-duration-100);
+  --motion-normal: var(--p-duration-200);
+  --motion-loop: var(--p-duration-1400);
+  --delay-wait-indicator: var(--p-duration-400);
+  --ease-out: var(--p-ease-out);
+  --ease-in-out: var(--p-ease-in-out);
+
+  --border-width: 1px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+}
+
+/* Dark theme: designed, not inverted (COL-04). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: var(--p-neutral-87);
+    --color-surface: var(--p-neutral-83);
+    --color-text: var(--p-neutral-0);
+    --color-text-muted: var(--p-neutral-25);
+    --color-border: var(--p-white-a10);
+    --color-border-strong: var(--p-neutral-40);
+    --color-accent: var(--p-blue-30);
+    --color-on-accent: var(--p-neutral-100);
+    --color-danger: var(--p-red-30);
+    --color-success: var(--p-green-30);
+    --color-attention: var(--p-amber-20);
+    --color-focus: var(--p-neutral-0);
+    --color-hover: var(--p-white-a6);
+    --color-pressed: var(--p-white-a10);
+    --color-selected: var(--p-blue-30-a14);
+    --color-track: var(--p-white-a12);
+    --color-code: var(--p-white-a6);
+    --shadow-raised: var(--p-shadow-high-dark);
+  }
+}
+
+/*
+ * Glass skin (Windows 11): the window's Fluent Acrylic shows through. Panels get a
+ * translucent fill and a light edge but no blur of their own (never glass on glass),
+ * and text always sits on a panel.
+ */
+[data-skin="glass"] {
+  --color-bg: transparent;
+  --color-surface: var(--p-white-a62);
+  --color-border: var(--p-white-a55);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-skin="glass"] {
+    --color-surface: var(--p-dark-a62);
+    --color-border: var(--p-white-a10);
+  }
+}
+
+/* ---------- Layer 3: component tokens ---------- */
+:root {
+  --layout-gap: var(--space-s);
+  --sidebar-width: 18rem;
+  --sidebar-max-height-stacked: 40vh;
+  --brand-mark-size: 2.5rem;
+  --device-min-height: 3.5rem;
+  --message-max-width: 36rem;
+  --details-max-height: 12rem;
+  --visually-hidden-size: 1px;
+
+  /* CMP-02: 40 px visible, extended to a 48 px hit area. */
+  --button-height: 2.5rem;
+  --button-hit-extend: 0.25rem;
+  --button-bg: var(--color-surface);
+  --button-fg: var(--color-text);
+  --button-border: var(--color-border-strong);
+  --press-scale: 0.98;
+
+  --progress-height: 0.25rem;
+  --progress-indicator-width: 40%;
+  --progress-from: -100%;
+  --progress-to: 250%;
+  --progress-static-opacity: 0.6;
+
+  --mirror-radius: var(--radius-media);
+  --mirror-bg: var(--color-media-bg);
+  --mirror-shadow: var(--shadow-raised);
+}
+
+/* High contrast: system colours win over every skin. */
+@media (forced-colors: active) {
+  :root {
+    --color-bg: Canvas;
+    --color-surface: Canvas;
+    --color-text: CanvasText;
+    --color-text-muted: CanvasText;
+    --color-border: CanvasText;
+    --color-border-strong: ButtonText;
+    --color-accent: Highlight;
+    --color-on-accent: HighlightText;
+    --color-focus: Highlight;
+    --color-selected: Canvas;
+    --color-hover: transparent;
+    --color-pressed: transparent;
+    --shadow-panel: none;
+    --shadow-raised: none;
+  }
+}
+
+/* MOT-09: no movement when the user asks for less. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-normal: 0ms;
+    --press-scale: 1;
+  }
+}

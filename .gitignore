@@ -1,0 +1,25 @@
+# Dependencies and build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Downloaded by `npm run fetch-deps` (pinned and checksummed, never committed)
+src-tauri/resources/
+
+# Release staging in CI
+release/
+portable/
+
+# Logs and local settings
+*.log
+*.local
+.env
+.env.*
+
+# Editors and OS files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

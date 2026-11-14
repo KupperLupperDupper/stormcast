@@ -1,0 +1,391 @@
+/* Layout and components. Uses only layer 2 and 3 tokens from tokens.css (TOK-01, TOK-02). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+/* Hide the page until the skin is known, so it never flashes the wrong design (LAY-02). */
+html:not([data-skin]) body {
+  visibility: hidden;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: var(--type-body);
+}
+
+h1,
+h2,
+p,
+ol {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: var(--focus-width) solid var(--color-focus);
+  outline-offset: var(--focus-offset);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: var(--visually-hidden-size);
+  height: var(--visually-hidden-size);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.text-caption {
+  font: var(--type-caption);
+}
+
+.text-label {
+  font: var(--type-body-strong);
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+/* Keeps its space in the layout, so showing it later moves nothing (LAY-02). */
+.is-invisible {
+  visibility: hidden;
+}
+
+/* ---------- Layout ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  gap: var(--layout-gap);
+  height: 100%;
+  padding: var(--layout-gap);
+}
+
+/* LAY-04: follow the available width. Breakpoints cannot use tokens (deviation in the design brief). */
+@media (max-width: 40rem) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sidebar {
+    max-height: var(--sidebar-max-height-stacked);
+  }
+}
+
+.panel {
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-m);
+  min-height: 0;
+  padding: var(--space-m);
+  overflow: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-s);
+}
+
+.brand__mark {
+  flex: none;
+  width: var(--brand-mark-size);
+  height: var(--brand-mark-size);
+}
+
+.brand__name {
+  font: var(--type-subtitle);
+}
+
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-xxs) var(--space-s);
+  width: 100%;
+  min-height: var(--device-min-height);
+  padding: var(--space-s) var(--space-m);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.device:hover {
+  background: var(--color-hover);
+}
+
+/* CMP-04: feedback on press. */
+.device:active {
+  background: var(--color-pressed);
+}
+
+/* COL-03: the selected device has a border and the text "Mirroring", not only a colour. */
+.device[aria-current="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-selected);
+}
+
+.device__name {
+  font: var(--type-body-strong);
+  overflow-wrap: anywhere;
+}
+
+.device__meta {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font: var(--type-caption);
+  overflow-wrap: anywhere;
+}
+
+.chip {
+  padding: 0 var(--space-s);
+  border: var(--border-width) solid currentColor;
+  border-radius: var(--radius-pill);
+  font: var(--type-caption);
+  white-space: nowrap;
+}
+
+.chip--ready {
+  color: var(--color-success);
+}
+
+.chip--attention {
+  color: var(--color-attention);
+}
+
+.chip--active {
+  color: var(--color-accent);
+}
+
+/* ---------- Stage ---------- */
+
+.stage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-m);
+  width: min(100%, var(--message-max-width));
+  padding: var(--space-xl);
+}
+
+.message__title {
+  font: var(--type-title);
+}
+
+.steps {
+  display: grid;
+  gap: var(--space-s);
+  padding-inline-start: var(--space-l);
+}
+
+.code {
+  display: inline-block;
+  padding: var(--space-xxs) var(--space-s);
+  border-radius: var(--radius-control);
+  background: var(--color-code);
+  font: var(--type-code);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-s);
+}
+
+.details summary {
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.details pre {
+  max-height: var(--details-max-height);
+  margin: var(--space-s) 0 0;
+  overflow: auto;
+  font: var(--type-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Buttons ---------- */
+
+.button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--button-height);
+  padding: 0 var(--space-m);
+  border: var(--border-width) solid var(--button-border);
+  border-radius: var(--radius-control);
+  background: var(--button-bg);
+  color: var(--button-fg);
+  font: var(--type-body-strong);
+  cursor: pointer;
+  transition:
+    transform var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+/* CMP-02: extend the hit area to 48 px without changing the layout. */
+.button::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--button-hit-extend) * -1);
+}
+
+.button:hover {
+  background-image: linear-gradient(var(--color-hover), var(--color-hover));
+}
+
+/* CMP-04: feedback on press, action on release. */
+.button:active {
+  transform: scale(var(--press-scale));
+}
+
+.button--primary {
+  --button-bg: var(--color-accent);
+  --button-fg: var(--color-on-accent);
+  --button-border: transparent;
+}
+
+/* ---------- Progress ---------- */
+
+.progress {
+  position: relative;
+  height: var(--progress-height);
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-track);
+  /* PAT-01 and K11: the wait indicator appears after about 0.4 s, never at once. */
+  animation: wait-indicator-in var(--motion-fast) var(--ease-out) var(--delay-wait-indicator) both;
+}
+
+@keyframes wait-indicator-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.progress::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--progress-indicator-width);
+  border-radius: inherit;
+  background: var(--color-accent);
+  animation: progress-slide var(--motion-loop) var(--ease-in-out) infinite;
+}
+
+@keyframes progress-slide {
+  from {
+    transform: translateX(var(--progress-from));
+  }
+
+  to {
+    transform: translateX(var(--progress-to));
+  }
+}
+
+/* MOT-09 and MOT-10: no endless movement when the user asks for less. */
+@media (prefers-reduced-motion: reduce) {
+  .progress::after {
+    width: 100%;
+    animation: none;
+    opacity: var(--progress-static-opacity);
+  }
+}
+
+/* ---------- Mirroring ---------- */
+
+.mirror {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--layout-gap);
+  width: 100%;
+  height: 100%;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-s) var(--space-m);
+  padding: var(--space-s) var(--space-m);
+}
+
+.toolbar__title {
+  font: var(--type-body-strong);
+  overflow-wrap: anywhere;
+}
+
+/* TYP-05: numbers that update in place use tabular figures. */
+.toolbar__status {
+  margin-inline-start: auto;
+  color: var(--color-text-muted);
+  font: var(--type-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.screen {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: var(--space-s);
+}
+
+.screen__video {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--mirror-radius);
+  background: var(--mirror-bg);
+  box-shadow: var(--mirror-shadow);
+}

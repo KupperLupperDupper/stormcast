@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stormcast</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar panel" aria-labelledby="devices-heading">
+        <header class="brand">
+          <img class="brand__mark" src="/icon.svg" alt="" />
+          <div>
+            <h1 class="brand__name" id="brand-name"></h1>
+            <p class="text-caption text-muted" id="brand-tagline"></p>
+          </div>
+        </header>
+        <h2 class="text-label" id="devices-heading"></h2>
+        <ul class="device-list" id="device-list"></ul>
+      </aside>
+      <main class="stage" id="stage"></main>
+    </div>
+    <div class="visually-hidden" role="status" aria-live="polite" id="announcer"></div>
+  </body>
+</html>

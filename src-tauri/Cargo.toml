@@ -1,0 +1,38 @@
+[package]
+name = "stormcast"
+version = "0.1.0"
+description = "Mirror an Android screen to Windows over USB"
+license = "Apache-2.0"
+repository = "https://github.com/KupperLupperDupper/stormcast"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the library name apart from the binary name on Windows,
+# see https://github.com/rust-lang/cargo/issues/8519
+name = "stormcast_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+serde_json = "1"
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+tauri-plugin-log = "2.10"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "sync", "time"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+
+# https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
