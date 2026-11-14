@@ -24,7 +24,23 @@ const errors: Record<string, { title: string; body: string }> = {
   },
   server_missing: {
     title: "Part of Stormcast is missing",
-    body: "The mirroring service was not found. Reinstall Stormcast. If you built it yourself, run npm run fetch-deps.",
+    body: "The phone service was not found. Reinstall Stormcast. If you built it yourself, run npm run build:server.",
+  },
+  protocol_mismatch: {
+    title: "Stormcast and its phone service do not match",
+    body: "Reinstall Stormcast. If you built it yourself, run npm run build:server.",
+  },
+  display_unavailable: {
+    title: "The device did not allow screen capture",
+    body: "Unlock the device and try again. If it keeps happening, restart the device.",
+  },
+  encoder_failed: {
+    title: "The device's video encoder failed",
+    body: "Try again. If it keeps failing, restart the device.",
+  },
+  server_error: {
+    title: "The phone service stopped with an error",
+    body: "Try again. If it keeps happening, report the technical details below.",
   },
   connect_timeout: {
     title: "The device did not respond",

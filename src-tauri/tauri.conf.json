@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Stormcast",
   "version": "../package.json",
-  "identifier": "io.github.kupperlupperdupper.stormcast",
+  "identifier": "com.stormitron.stormcast",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run build:server && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build:server && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -19,7 +19,8 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "publisher": "Stormcast",
+    "publisher": "Stormitron",
+    "copyright": "Copyright © 2026 Stormitron",
     "homepage": "https://github.com/KupperLupperDupper/stormcast",
     "category": "Utility",
     "shortDescription": "Mirror an Android screen over USB",

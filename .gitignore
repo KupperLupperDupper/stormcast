@@ -3,8 +3,9 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/schemas/
+server/build/
 
-# Downloaded by `npm run fetch-deps` (pinned and checksummed, never committed)
+# Built by `npm run build:server` and fetched by `npm run fetch-adb`
 src-tauri/resources/
 
 # Release staging in CI

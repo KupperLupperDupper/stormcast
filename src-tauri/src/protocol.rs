@@ -1,183 +1,284 @@
-//! The scrcpy 5.0.1 video protocol, as the server writes it in
-//! `server/src/main/java/com/genymobile/scrcpy/device/Streamer.java` and
-//! `DesktopConnection.java`. It changes between scrcpy versions, so this module must
-//! follow the version pinned in `scrcpy-server.json`.
+//! The Stormcast protocol between the phone-side server (`server/`) and this app, specified
+//! in `docs/PROTOCOL.md`. Both sides test against `protocol/vectors.txt`.
 //!
-//! Video socket: device name (64 bytes, first socket only), codec id (u32), then a
-//! stream of 12-byte headers, each followed by its payload. Integers are big-endian.
+//! The phone sends a 5-byte preamble (`STRM` and the version), then messages of
+//! `[u8 type][u32 length][payload]`. Integers are big-endian. Unknown types are skipped.
 
 use crate::error::AppError;
+use serde::Deserialize;
 
-pub const DEVICE_NAME_LEN: usize = 64;
-pub const HEADER_LEN: usize = 12;
-pub const CODEC_H264: u32 = 0x6832_3634; // "h264"
+pub const VERSION: u8 = 1;
+pub const PREAMBLE_LEN: usize = 5;
+pub const HEADER_LEN: usize = 5;
+const MAGIC: &[u8; 4] = b"STRM";
+/// A larger message means a broken stream; refuse it instead of allocating.
+const MAX_PAYLOAD: u32 = 64 * 1024 * 1024;
 
-const FLAG_SESSION: u64 = 1 << 63;
-const FLAG_CONFIG: u64 = 1 << 62;
-const FLAG_KEY_FRAME: u64 = 1 << 61;
-const PTS_MASK: u64 = FLAG_KEY_FRAME - 1;
-/// A larger packet means a broken stream; refuse it instead of allocating.
-const MAX_PACKET_SIZE: u32 = 64 * 1024 * 1024;
+pub const TYPE_HELLO: u8 = 1;
+pub const TYPE_SESSION: u8 = 2;
+pub const TYPE_CONFIG: u8 = 3;
+pub const TYPE_FRAME: u8 = 4;
+pub const TYPE_ERROR: u8 = 5;
+
+/// Flags and PTS in front of a frame's data.
+const FRAME_PREFIX_LEN: usize = 9;
+const FLAG_KEY_FRAME: u8 = 1;
+
+pub fn check_preamble(bytes: &[u8; PREAMBLE_LEN]) -> Result<(), AppError> {
+    if &bytes[..4] != MAGIC {
+        return Err(AppError::new(
+            "server_failed",
+            "the device sent something that is not a Stormcast stream",
+        ));
+    }
+    if bytes[4] != VERSION {
+        return Err(AppError::new(
+            "protocol_mismatch",
+            format!("the server speaks protocol {}, the app {VERSION}", bytes[4]),
+        ));
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Header {
-    /// A new capture session (for example after rotation) with the size of the coming frames.
-    Session {
-        width: u32,
-        height: u32,
-        client_resized: bool,
-    },
-    /// Encoder output: a config packet (SPS/PPS) or a frame. `size` bytes follow.
-    Media {
-        config: bool,
-        key_frame: bool,
-        pts: u64,
-        size: u32,
-    },
+pub struct Header {
+    pub kind: u8,
+    pub length: u32,
 }
 
 pub fn parse_header(bytes: &[u8; HEADER_LEN]) -> Result<Header, AppError> {
-    let be32 =
-        |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
-    let first = u64::from_be_bytes([
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-    ]);
-    if first & FLAG_SESSION != 0 {
-        return Ok(Header::Session {
-            width: be32(4),
-            height: be32(8),
-            client_resized: bytes[3] & 1 == 1,
-        });
-    }
-    let size = be32(8);
-    if size > MAX_PACKET_SIZE {
+    let length = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
+    if length > MAX_PAYLOAD {
         return Err(AppError::new(
             "bad_stream",
-            format!("packet of {size} bytes"),
+            format!("message of {length} bytes"),
         ));
     }
-    Ok(Header::Media {
-        config: first & FLAG_CONFIG != 0,
-        key_frame: first & FLAG_KEY_FRAME != 0,
-        pts: first & PTS_MASK,
-        size,
+    Ok(Header {
+        kind: bytes[0],
+        length,
     })
 }
 
-/// The device name is UTF-8, padded with NUL bytes.
-pub fn parse_device_name(bytes: &[u8]) -> String {
-    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-    String::from_utf8_lossy(&bytes[..end]).into_owned()
+/// The first message. Unknown fields are ignored, so the server can add more.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Hello {
+    pub device: String,
+    pub codec: String,
+    pub server: String,
 }
 
-pub fn codec_name(id: u32) -> Option<&'static str> {
-    match id {
-        CODEC_H264 => Some("h264"),
-        0x6832_3635 => Some("h265"),
-        0x0061_7631 => Some("av1"),
-        0x0076_7038 => Some("vp8"),
-        0x0076_7039 => Some("vp9"),
-        _ => None,
+pub fn parse_hello(payload: &[u8]) -> Result<Hello, AppError> {
+    serde_json::from_slice(payload)
+        .map_err(|error| AppError::new("bad_stream", format!("hello: {error}")))
+}
+
+/// A new capture session, for example after rotation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Session {
+    pub width: u32,
+    pub height: u32,
+    pub rotation: u8,
+}
+
+pub fn parse_session(payload: &[u8]) -> Result<Session, AppError> {
+    if payload.len() < 9 {
+        return Err(too_short("session"));
     }
+    Ok(Session {
+        width: be32(&payload[0..4]),
+        height: be32(&payload[4..8]),
+        rotation: payload[8],
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Frame<'a> {
+    pub key_frame: bool,
+    /// Presentation time in microseconds.
+    pub pts: u64,
+    /// The encoded frame, Annex B.
+    pub data: &'a [u8],
+}
+
+pub fn parse_frame(payload: &[u8]) -> Result<Frame<'_>, AppError> {
+    if payload.len() < FRAME_PREFIX_LEN {
+        return Err(too_short("frame"));
+    }
+    let mut pts = [0u8; 8];
+    pts.copy_from_slice(&payload[1..FRAME_PREFIX_LEN]);
+    Ok(Frame {
+        key_frame: payload[0] & FLAG_KEY_FRAME != 0,
+        pts: u64::from_be_bytes(pts),
+        data: &payload[FRAME_PREFIX_LEN..],
+    })
+}
+
+/// The server's last message before it stops.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ServerError {
+    pub code: String,
+    pub message: String,
+}
+
+pub fn parse_error(payload: &[u8]) -> ServerError {
+    serde_json::from_slice(payload).unwrap_or_else(|_| ServerError {
+        code: "server_error".into(),
+        message: String::from_utf8_lossy(payload).into_owned(),
+    })
+}
+
+impl From<ServerError> for AppError {
+    fn from(error: ServerError) -> Self {
+        // Known codes have their own text in the UI (src/strings.ts).
+        let code = match error.code.as_str() {
+            "display_unavailable" => "display_unavailable",
+            "encoder_failed" => "encoder_failed",
+            _ => "server_error",
+        };
+        AppError::new(code, format!("{}: {}", error.code, error.message))
+    }
+}
+
+fn be32(bytes: &[u8]) -> u32 {
+    u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+}
+
+fn too_short(what: &str) -> AppError {
+    AppError::new("bad_stream", format!("{what} message is too short"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn header(first: [u8; 8], last: u32) -> [u8; HEADER_LEN] {
-        let mut bytes = [0u8; HEADER_LEN];
-        bytes[..8].copy_from_slice(&first);
-        bytes[8..].copy_from_slice(&last.to_be_bytes());
-        bytes
+    const VECTORS: &str = include_str!("../../protocol/vectors.txt");
+
+    /// The bytes of a named vector in protocol/vectors.txt, which the Java tests also check.
+    fn vector(name: &str) -> Vec<u8> {
+        let hex = VECTORS
+            .lines()
+            .filter(|line| !line.trim_start().starts_with('#'))
+            .find_map(|line| {
+                let (key, hex) = line.split_once('|')?;
+                (key.trim() == name).then_some(hex)
+            })
+            .unwrap_or_else(|| panic!("no vector {name}"));
+        let digits: Vec<u8> = hex.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+        digits
+            .chunks(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect()
+    }
+
+    /// Splits a message vector into its header and payload.
+    fn message(name: &str) -> (Header, Vec<u8>) {
+        let bytes = vector(name);
+        let header = parse_header(bytes[..HEADER_LEN].try_into().unwrap()).unwrap();
+        assert_eq!(
+            header.length as usize,
+            bytes.len() - HEADER_LEN,
+            "{name} length"
+        );
+        (header, bytes[HEADER_LEN..].to_vec())
     }
 
     #[test]
-    fn parses_a_session_packet() {
-        let mut first = [0u8; 8];
-        first[0] = 0x80;
-        first[4..].copy_from_slice(&1200u32.to_be_bytes());
+    fn accepts_the_preamble() {
+        check_preamble(vector("preamble").as_slice().try_into().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn rejects_a_wrong_magic_or_version() {
         assert_eq!(
-            parse_header(&header(first, 1920)).unwrap(),
-            Header::Session {
+            check_preamble(b"XTRM\x01").unwrap_err().code,
+            "server_failed"
+        );
+        assert_eq!(
+            check_preamble(b"STRM\x02").unwrap_err().code,
+            "protocol_mismatch"
+        );
+    }
+
+    #[test]
+    fn decodes_hello() {
+        let (header, payload) = message("hello");
+        assert_eq!(header.kind, TYPE_HELLO);
+        assert_eq!(
+            parse_hello(&payload).unwrap(),
+            Hello {
+                device: "Lenovo TB311FU".into(),
+                codec: "h264".into(),
+                server: "0.1.0".into()
+            }
+        );
+    }
+
+    #[test]
+    fn decodes_session() {
+        let (header, payload) = message("session");
+        assert_eq!(header.kind, TYPE_SESSION);
+        assert_eq!(
+            parse_session(&payload).unwrap(),
+            Session {
                 width: 1200,
                 height: 1920,
-                client_resized: false
+                rotation: 1
             }
         );
     }
 
     #[test]
-    fn reads_the_client_resized_flag() {
-        let mut first = [0u8; 8];
-        first[0] = 0x80;
-        first[3] = 1;
-        assert!(matches!(
-            parse_header(&header(first, 0)).unwrap(),
-            Header::Session {
-                client_resized: true,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn parses_a_config_packet() {
+    fn decodes_config() {
+        let (header, payload) = message("config");
+        assert_eq!(header.kind, TYPE_CONFIG);
         assert_eq!(
-            parse_header(&header(FLAG_CONFIG.to_be_bytes(), 27)).unwrap(),
-            Header::Media {
-                config: true,
-                key_frame: false,
-                pts: 0,
-                size: 27
-            }
+            crate::h264::codec_string(&payload).as_deref(),
+            Some("avc1.64002A")
         );
     }
 
     #[test]
-    fn parses_a_key_frame_and_its_pts() {
-        let first = FLAG_KEY_FRAME | 1_234_567;
+    fn decodes_frames() {
+        let (header, payload) = message("frame_key");
+        assert_eq!(header.kind, TYPE_FRAME);
         assert_eq!(
-            parse_header(&header(first.to_be_bytes(), 50_000)).unwrap(),
-            Header::Media {
-                config: false,
+            parse_frame(&payload).unwrap(),
+            Frame {
                 key_frame: true,
                 pts: 1_234_567,
-                size: 50_000
+                data: &[0, 0, 0, 1, 0x65, 0x88]
+            }
+        );
+        let (_, payload) = message("frame_delta");
+        assert_eq!(
+            parse_frame(&payload).unwrap(),
+            Frame {
+                key_frame: false,
+                pts: 1_251_234,
+                data: &[0, 0, 0, 1, 0x41, 0x9a]
             }
         );
     }
 
     #[test]
-    fn keeps_the_full_61_bit_pts() {
-        let first = PTS_MASK;
-        assert!(matches!(
-            parse_header(&header(first.to_be_bytes(), 1)).unwrap(),
-            Header::Media { config: false, key_frame: false, pts, .. } if pts == PTS_MASK
-        ));
-    }
-
-    #[test]
-    fn refuses_oversized_packets() {
-        assert!(parse_header(&header([0; 8], u32::MAX)).is_err());
-    }
-
-    #[test]
-    fn reads_the_device_name() {
-        let mut bytes = [0u8; DEVICE_NAME_LEN];
-        bytes[..7].copy_from_slice(b"TB311FU");
-        assert_eq!(parse_device_name(&bytes), "TB311FU");
+    fn decodes_errors() {
+        let (header, payload) = message("error");
+        assert_eq!(header.kind, TYPE_ERROR);
+        let error = parse_error(&payload);
+        assert_eq!(error.code, "encoder_failed");
+        assert_eq!(error.message, "No H.264 encoder\n\"quoted\" é");
+        assert_eq!(AppError::from(error).code, "encoder_failed");
         assert_eq!(
-            parse_device_name(&[b'a'; DEVICE_NAME_LEN]).len(),
-            DEVICE_NAME_LEN
+            AppError::from(parse_error(b"not json")).code,
+            "server_error"
         );
-        assert_eq!(parse_device_name(&[0xff, b'x', 0]), "\u{fffd}x");
     }
 
     #[test]
-    fn names_codec_ids() {
-        assert_eq!(codec_name(CODEC_H264), Some("h264"));
-        assert_eq!(codec_name(0x0061_7631), Some("av1"));
-        assert_eq!(codec_name(0), None);
+    fn refuses_oversized_and_short_messages() {
+        assert!(parse_header(&[TYPE_FRAME, 0xff, 0xff, 0xff, 0xff]).is_err());
+        assert!(parse_session(&[0; 8]).is_err());
+        assert!(parse_frame(&[0; 8]).is_err());
     }
 }

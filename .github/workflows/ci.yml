@@ -24,6 +24,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal --component clippy,rustfmt
@@ -34,6 +39,9 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
+
+      - name: Phone server tests and build
+        run: npm run build:server
 
       - name: Type-check and build the web UI
         run: npm run build

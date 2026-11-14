@@ -20,29 +20,29 @@ gh attestation verify Stormcast-0.1.0-x64-setup.exe --repo KupperLupperDupper/st
 ## Requirements
 
 - Windows 10 or Windows 11, 64-bit. Windows 11 gets the glass design. Windows 10, and Windows 11 with transparency effects turned off, get a solid design.
-- An Android device with USB debugging turned on.
+- An Android device with USB debugging turned on. Built for Android 10 and later; tested on Android 16.
 
 ## How it works
 
-1. Stormcast uses `adb` to copy the [scrcpy](https://github.com/Genymobile/scrcpy) server to the device and start it.
-2. The server captures the screen and encodes it as H.264 with the device's hardware encoder.
-3. The video travels over the USB cable, and Stormcast decodes it on the graphics card with WebCodecs.
+1. Stormcast carries a small server for the phone (`server/`). When you start mirroring, it copies the server to the device with `adb` and starts it.
+2. The server mirrors the screen into the device's hardware video encoder and sends H.264 back over the USB cable, using [Stormcast's own protocol](docs/PROTOCOL.md).
+3. Stormcast decodes the video on the graphics card with WebCodecs and shows it.
 
-Nothing is installed on the device, and the server deletes itself when mirroring stops.
+Nothing is installed on the device, and the server deletes its file as soon as it starts.
 
 ## Build from source
 
-You need Node.js 22 or later, Rust (stable, MSVC toolchain) and the Visual Studio C++ build tools.
+You need Node.js 22 or later, Rust (stable, MSVC toolchain), the Visual Studio C++ build tools, JDK 17 or later, and the Android SDK with build-tools and a platform from API 30 up.
 
 ```powershell
 npm ci
-npm run fetch-deps   # downloads the pinned scrcpy server and checks its SHA-256
-npm run tauri dev
+npm run tauri dev   # also builds the phone server
 ```
 
 Checks, the same as CI runs:
 
 ```powershell
+npm run build:server     # the phone server's protocol tests, then the server itself
 npm run build            # TypeScript and the web UI
 npm run check:contrast   # WCAG contrast of the colour tokens
 cd src-tauri
@@ -72,4 +72,4 @@ The [Release workflow](.github/workflows/release.yml) builds the installer and t
 
 ## License
 
-[Apache License 2.0](LICENSE). Releases include the scrcpy server and Android platform tools; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+[Apache License 2.0](LICENSE). Releases include Android platform tools; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

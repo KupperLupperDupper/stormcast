@@ -32,6 +32,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Install Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -54,9 +59,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Fetch the scrcpy server and adb
-        run: npm run fetch-deps -- --with-adb
+      - name: Fetch adb
+        run: npm run fetch-adb
 
+      # beforeBuildCommand builds the phone server (with its tests) and the web UI.
       - name: Build
         run: npx tauri build --bundles nsis --config src-tauri/tauri.release.conf.json
 
@@ -71,7 +77,7 @@ jobs:
           $portable = New-Item -ItemType Directory -Force portable/Stormcast
           $exe = Get-ChildItem src-tauri/target/release -Filter *.exe | Select-Object -First 1
           Copy-Item $exe.FullName "$portable/Stormcast.exe"
-          Copy-Item src-tauri/resources/scrcpy-server "$portable/"
+          Copy-Item src-tauri/resources/stormcast-server.jar "$portable/"
           Copy-Item -Recurse src-tauri/resources/platform-tools "$portable/"
           Copy-Item LICENSE, THIRD-PARTY-NOTICES.md "$portable/"
           Compress-Archive -Path $portable -DestinationPath "$out/Stormcast-$version-x64-portable.zip"

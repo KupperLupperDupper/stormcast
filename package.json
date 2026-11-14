@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Mirror an Android screen to Windows over USB",
   "license": "Apache-2.0",
+  "author": "Stormitron",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -11,7 +12,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "fetch-deps": "node scripts/fetch-deps.mjs",
+    "build:server": "node scripts/build-server.mjs",
+    "fetch-adb": "node scripts/fetch-adb.mjs",
     "check:contrast": "node scripts/check-contrast.mjs",
     "tauri": "tauri"
   },

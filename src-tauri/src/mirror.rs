@@ -1,5 +1,5 @@
-//! One mirroring session: push the server, open the adb tunnel, start the server and
-//! forward the video stream to the web view over a Tauri channel.
+//! One mirroring session: push our server to the device, open the adb tunnel, start the
+//! server and forward its video to the web view over a Tauri channel.
 
 use crate::adb::Adb;
 use crate::error::AppError;
@@ -18,9 +18,10 @@ use tokio::process::Child;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-/// Must match the pinned server exactly, or the server refuses to start.
-const SERVER_VERSION: &str = env!("SCRCPY_SERVER_VERSION");
-const DEVICE_SERVER_PATH: &str = "/data/local/tmp/scrcpy-server.jar";
+/// Built from `server/` by `npm run build:server`.
+const SERVER_FILE: &str = "stormcast-server.jar";
+const DEVICE_SERVER_PATH: &str = "/data/local/tmp/stormcast-server.jar";
+const SERVER_CLASS: &str = "com.stormitron.stormcast.server.Server";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const SERVER_LOG_LINES: usize = 20;
 
@@ -30,8 +31,6 @@ const MSG_SESSION: u8 = 1;
 const MSG_CONFIG: u8 = 2;
 const MSG_FRAME: u8 = 3;
 const MSG_END: u8 = 4;
-/// Tag, flags and PTS in front of the frame data.
-const FRAME_PREFIX: usize = 10;
 
 /// The running session, if any. One device is mirrored at a time.
 #[derive(Default)]
@@ -40,8 +39,8 @@ pub struct MirrorState {
 }
 
 impl MirrorState {
-    /// Starts a session in the background. Progress, errors and the end of the
-    /// stream are reported on the channel, so the UI can cancel at any time.
+    /// Starts a session in the background. Progress, errors and the end of the stream are
+    /// reported on the channel, so the UI can cancel at any time.
     pub async fn start(&self, app: AppHandle, serial: String, channel: Channel<Response>) {
         let mut task = self.task.lock().await;
         if let Some(previous) = task.take() {
@@ -80,15 +79,19 @@ async fn mirror(
     let adb = Adb::locate(app)?;
     let server = server_path(app)?;
     let mut session = connect(&adb, serial, &server).await?;
-    log::info!("mirroring {serial} ({})", session.device_name);
-    let hello = serde_json::json!({ "deviceName": session.device_name });
+    log::info!(
+        "mirroring {serial}: {} (server {})",
+        session.hello.device,
+        session.hello.server
+    );
+    let hello = serde_json::json!({ "deviceName": session.hello.device });
     send(channel, message(MSG_HELLO, hello.to_string().as_bytes()))?;
     forward(&mut session.video, channel).await
 }
 
 struct Session {
     video: TcpStream,
-    device_name: String,
+    hello: protocol::Hello,
     /// Kept for the whole session; dropping it kills `adb shell` and with it the server.
     _server: Child,
 }
@@ -98,22 +101,29 @@ async fn connect(adb: &Adb, serial: &str, server: &Path) -> Result<Session, AppE
     adb.run(&["-s", serial, "push", &server_file, DEVICE_SERVER_PATH])
         .await?;
 
-    // Reverse tunnel: we listen, the server on the device connects to us.
+    // Reverse tunnel: we listen, and the server on the device connects to us.
     let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
     let port = listener.local_addr()?.port();
-    let scid = new_scid();
-    let socket = format!("localabstract:scrcpy_{scid:08x}");
-    adb.run(&["-s", serial, "reverse", &socket, &format!("tcp:{port}")])
-        .await?;
+    let socket_name = format!("stormcast_{:08x}", new_socket_id());
+    let tunnel_socket = format!("localabstract:{socket_name}");
+    adb.run(&[
+        "-s",
+        serial,
+        "reverse",
+        &tunnel_socket,
+        &format!("tcp:{port}"),
+    ])
+    .await?;
     let mut tunnel = ReverseTunnel {
         adb: adb.clone(),
         serial: serial.to_string(),
-        socket,
+        socket: tunnel_socket,
         open: true,
     };
 
     let class_path = format!("CLASSPATH={DEVICE_SERVER_PATH}");
-    let scid_arg = format!("scid={scid:08x}");
+    let version = protocol::VERSION.to_string();
+    let socket_arg = format!("socket={socket_name}");
     let mut server = adb.spawn(&[
         "-s",
         serial,
@@ -121,13 +131,9 @@ async fn connect(adb: &Adb, serial: &str, server: &Path) -> Result<Session, AppE
         &class_path,
         "app_process",
         "/",
-        "com.genymobile.scrcpy.Server",
-        SERVER_VERSION,
-        &scid_arg,
-        "log_level=info",
-        "audio=false",
-        "control=false",
-        "video_codec=h264",
+        SERVER_CLASS,
+        &version,
+        &socket_arg,
     ])?;
     let server_log = ServerLog::attach(&mut server);
 
@@ -137,7 +143,7 @@ async fn connect(adb: &Adb, serial: &str, server: &Path) -> Result<Session, AppE
             let status = status.map_or_else(|error| error.to_string(), |status| status.to_string());
             return Err(AppError::new(
                 "server_failed",
-                server_log.summary(&format!("the scrcpy server exited ({status})")),
+                server_log.summary(&format!("the server exited ({status})")),
             ));
         }
     };
@@ -155,68 +161,100 @@ async fn connect(adb: &Adb, serial: &str, server: &Path) -> Result<Session, AppE
     tunnel.close().await;
     video.set_nodelay(true)?;
 
-    let mut meta = [0u8; protocol::DEVICE_NAME_LEN];
-    video.read_exact(&mut meta).await?;
-    let device_name = protocol::parse_device_name(&meta);
-    let codec = video.read_u32().await?;
-    if codec != protocol::CODEC_H264 {
+    let mut preamble = [0u8; protocol::PREAMBLE_LEN];
+    video.read_exact(&mut preamble).await?;
+    protocol::check_preamble(&preamble)?;
+    let header = read_header(&mut video).await?.ok_or_else(|| {
+        AppError::new(
+            "server_failed",
+            "the device closed the connection before saying hello",
+        )
+    })?;
+    let payload = read_payload(&mut video, header.length).await?;
+    let hello = match header.kind {
+        protocol::TYPE_HELLO => protocol::parse_hello(&payload)?,
+        protocol::TYPE_ERROR => return Err(protocol::parse_error(&payload).into()),
+        other => {
+            return Err(AppError::new(
+                "bad_stream",
+                format!("expected hello, got message type {other}"),
+            ));
+        }
+    };
+    if hello.codec != "h264" {
         return Err(AppError::new(
             "unsupported_codec",
-            format!(
-                "expected h264, got {}",
-                protocol::codec_name(codec).unwrap_or("an unknown codec")
-            ),
+            format!("the server offers {}", hello.codec),
         ));
     }
     Ok(Session {
         video,
-        device_name,
+        hello,
         _server: server,
     })
 }
 
-/// Reads scrcpy packets and forwards them until the device closes the stream.
+/// Forwards the server's messages to the web view until the device closes the stream.
 async fn forward(video: &mut TcpStream, channel: &Channel<Response>) -> Result<(), AppError> {
-    let mut header = [0u8; protocol::HEADER_LEN];
-    loop {
-        match video.read_exact(&mut header).await {
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(()),
-            Err(error) => return Err(error.into()),
-        }
-        match protocol::parse_header(&header)? {
-            protocol::Header::Session { width, height, .. } => {
-                let mut body = [0u8; 8];
-                body[..4].copy_from_slice(&width.to_be_bytes());
-                body[4..].copy_from_slice(&height.to_be_bytes());
-                send(channel, message(MSG_SESSION, &body))?;
+    while let Some(header) = read_header(video).await? {
+        let payload = read_payload(video, header.length).await?;
+        match header.kind {
+            protocol::TYPE_SESSION => {
+                let session = protocol::parse_session(&payload)?;
+                log::info!(
+                    "video session {}x{}, rotation {}",
+                    session.width,
+                    session.height,
+                    session.rotation
+                );
+                send(channel, session_message(session.width, session.height))?;
             }
-            protocol::Header::Media {
-                config: true, size, ..
-            } => {
-                let mut config = vec![0u8; size as usize];
-                video.read_exact(&mut config).await?;
+            protocol::TYPE_CONFIG => {
+                log::info!("encoder config {}", hex(&payload));
+                // Tell the decoder there is no reordering, or it holds frames back.
+                let config = h264::low_latency_config(&payload).unwrap_or_else(|| {
+                    log::warn!("could not rewrite the SPS; the decoder may hold frames back");
+                    payload.clone()
+                });
                 let codec = h264::codec_string(&config)
-                    .ok_or_else(|| AppError::new("bad_stream", "config packet without an SPS"))?;
+                    .ok_or_else(|| AppError::new("bad_stream", "config without an SPS"))?;
                 send(channel, config_message(&codec, &config))?;
             }
-            protocol::Header::Media {
-                key_frame,
-                pts,
-                size,
-                ..
-            } => {
-                // Read straight into the message buffer to avoid a copy.
-                let mut msg = Vec::with_capacity(FRAME_PREFIX + size as usize);
-                msg.push(MSG_FRAME);
-                msg.push(u8::from(key_frame));
-                msg.extend_from_slice(&pts.to_be_bytes());
-                msg.resize(FRAME_PREFIX + size as usize, 0);
-                video.read_exact(&mut msg[FRAME_PREFIX..]).await?;
-                send(channel, msg)?;
+            protocol::TYPE_FRAME => {
+                send(channel, frame_message(&protocol::parse_frame(&payload)?))?;
             }
+            protocol::TYPE_ERROR => return Err(protocol::parse_error(&payload).into()),
+            // Skipped, so a newer server with more message types still works.
+            _ => {}
         }
     }
+    Ok(())
+}
+
+/// The next message header, or `None` when the device closed the stream.
+async fn read_header(video: &mut TcpStream) -> Result<Option<protocol::Header>, AppError> {
+    let mut bytes = [0u8; protocol::HEADER_LEN];
+    match video.read_exact(&mut bytes).await {
+        Ok(_) => protocol::parse_header(&bytes).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn read_payload(video: &mut TcpStream, length: u32) -> Result<Vec<u8>, AppError> {
+    let mut payload = vec![0u8; length as usize];
+    video.read_exact(&mut payload).await?;
+    Ok(payload)
+}
+
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut out, byte| {
+            let _ = write!(out, "{byte:02x}");
+            out
+        })
 }
 
 fn message(tag: u8, body: &[u8]) -> Vec<u8> {
@@ -226,14 +264,33 @@ fn message(tag: u8, body: &[u8]) -> Vec<u8> {
     msg
 }
 
-/// `[tag][codec length][codec][SPS/PPS]`. The web view keeps the SPS/PPS so it can
-/// restart its decoder at any key frame.
+/// `[tag][u32 width][u32 height]`
+fn session_message(width: u32, height: u32) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(9);
+    msg.push(MSG_SESSION);
+    msg.extend_from_slice(&width.to_be_bytes());
+    msg.extend_from_slice(&height.to_be_bytes());
+    msg
+}
+
+/// `[tag][codec length][codec][SPS/PPS]`. The web view keeps the SPS/PPS, so it can restart
+/// its decoder at any key frame.
 fn config_message(codec: &str, config: &[u8]) -> Vec<u8> {
     let mut msg = Vec::with_capacity(2 + codec.len() + config.len());
     msg.push(MSG_CONFIG);
     msg.push(u8::try_from(codec.len()).unwrap_or(u8::MAX));
     msg.extend_from_slice(codec.as_bytes());
     msg.extend_from_slice(config);
+    msg
+}
+
+/// `[tag][flags][u64 pts][data]`
+fn frame_message(frame: &protocol::Frame<'_>) -> Vec<u8> {
+    let mut msg = Vec::with_capacity(10 + frame.data.len());
+    msg.push(MSG_FRAME);
+    msg.push(u8::from(frame.key_frame));
+    msg.extend_from_slice(&frame.pts.to_be_bytes());
+    msg.extend_from_slice(frame.data);
     msg
 }
 
@@ -249,27 +306,28 @@ fn server_path(app: &AppHandle) -> Result<PathBuf, AppError> {
         candidates.push(PathBuf::from(path));
     }
     if let Ok(dir) = app.path().resource_dir() {
-        candidates.push(dir.join("scrcpy-server"));
+        candidates.push(dir.join(SERVER_FILE));
     }
-    // Development builds use the copy downloaded by `npm run fetch-deps`.
+    // Development builds use the jar from `npm run build:server`.
     #[cfg(debug_assertions)]
-    candidates.push(PathBuf::from(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/resources/scrcpy-server"
-    )));
+    candidates.push(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(SERVER_FILE),
+    );
     candidates
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| {
             AppError::new(
                 "server_missing",
-                format!("scrcpy-server {SERVER_VERSION} was not found; run `npm run fetch-deps`"),
+                format!("{SERVER_FILE} was not found; run `npm run build:server`"),
             )
         })
 }
 
 /// A random 31-bit id, so several sessions can run on one device at the same time.
-fn new_scid() -> u32 {
+fn new_socket_id() -> u32 {
     let random = RandomState::new().build_hasher().finish();
     (random as u32) & 0x7fff_ffff
 }
@@ -329,7 +387,7 @@ impl ServerLog {
         let mut lines = BufReader::new(pipe).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let line = line.trim_end().to_string();
-            log::info!(target: "scrcpy_server", "{line}");
+            log::info!(target: "stormcast_server", "{line}");
             let mut buffer = self
                 .0
                 .lock()
@@ -359,6 +417,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn session_message_carries_the_size() {
+        assert_eq!(
+            session_message(1200, 1920),
+            vec![MSG_SESSION, 0, 0, 0x04, 0xb0, 0, 0, 0x07, 0x80]
+        );
+    }
+
+    #[test]
     fn config_message_carries_codec_and_sps_pps() {
         let msg = config_message("avc1.64002A", &[0, 0, 0, 1, 0x67]);
         assert_eq!(msg[0], MSG_CONFIG);
@@ -368,14 +434,29 @@ mod tests {
     }
 
     #[test]
+    fn frame_message_keeps_flags_pts_and_data() {
+        let frame = protocol::Frame {
+            key_frame: true,
+            pts: 1_234_567,
+            data: &[0, 0, 0, 1, 0x65],
+        };
+        assert_eq!(
+            frame_message(&frame),
+            vec![
+                MSG_FRAME, 1, 0, 0, 0, 0, 0, 0x12, 0xd6, 0x87, 0, 0, 0, 1, 0x65
+            ]
+        );
+    }
+
+    #[test]
     fn message_prefixes_the_tag() {
         assert_eq!(message(MSG_END, b"{}"), vec![MSG_END, b'{', b'}']);
     }
 
     #[test]
-    fn scid_fits_in_31_bits() {
+    fn socket_id_fits_in_31_bits() {
         for _ in 0..100 {
-            assert!(new_scid() <= 0x7fff_ffff);
+            assert!(new_socket_id() <= 0x7fff_ffff);
         }
     }
 

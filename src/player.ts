@@ -22,6 +22,9 @@ export interface PlayerStats {
   width: number;
   height: number;
   fps: number;
+  /** Frames handed to the decoder. Far more than framesDecoded means the decoder holds frames back. */
+  framesReceived: number;
+  decodeQueue: number;
   framesDecoded: number;
   framesDropped: number;
   decoderErrors: number;
@@ -47,6 +50,7 @@ export class MirrorPlayer {
   private raf = 0;
   private readonly startedAt = performance.now();
   private firstFrameMs: number | null = null;
+  private framesReceived = 0;
   private framesDecoded = 0;
   private framesDropped = 0;
   private decoderErrors = 0;
@@ -97,6 +101,8 @@ export class MirrorPlayer {
       width: this.canvas.width,
       height: this.canvas.height,
       fps: this.drawTimes.length,
+      framesReceived: this.framesReceived,
+      decodeQueue: this.decoder?.decodeQueueSize ?? 0,
       framesDecoded: this.framesDecoded,
       framesDropped: this.framesDropped,
       decoderErrors: this.decoderErrors,
@@ -154,6 +160,7 @@ export class MirrorPlayer {
       payload.set(data, this.config.length);
       this.needConfig = false;
     }
+    this.framesReceived++;
     decoder.decode(new EncodedVideoChunk({ type: keyFrame ? "key" : "delta", timestamp: pts, data: payload }));
   }
 
