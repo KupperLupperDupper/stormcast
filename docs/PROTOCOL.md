@@ -38,6 +38,7 @@ All integers are big-endian. `f32` is an IEEE 754 single. Every message is `u8 t
 | 3 | config | The codec configuration: H.264 SPS and PPS in Annex B. Comes before the first frame of each session. |
 | 4 | frame | `u8 flags` (bit 0: key frame), `u64 pts` in microseconds, then the encoded frame in Annex B. Frames come in display order: the server turns B-frames off. |
 | 5 | error | UTF-8 JSON with `code` and `message`. The server stops after sending it. Codes: `display_unavailable`, `encoder_failed`, `server_error`. |
+| 6 | clipboard | UTF-8 text: the device's clipboard changed, for example after Copy. Not sent for text the server put there itself. |
 
 A payload is at most 64 MiB; a larger length means a broken stream.
 
@@ -52,14 +53,16 @@ No preamble: the version was checked when the server started. The server injects
 | 18 | text | UTF-8 text to type. |
 | 19 | button | `u8 button`: 0 back, 1 home, 2 recent apps, 3 power. One press and release; power turns the screen on or off. |
 | 20 | scroll | `u16 x`, `u16 y`, `u16 width`, `u16 height`, `f32 horizontal`, `f32 vertical`. |
+| 21 | set clipboard | `u8 paste` (0 or 1), then UTF-8 text. Puts the text on the device's clipboard, and with paste 1 also pastes it. |
 
 - **Positions** are pixels on the video: `x` and `y` on a video of `width` × `height`, the size in the current session message. The server scales them to the display. A position for another size was made before the display rotated, so the server drops it; an up or cancel then cancels the touch, so no finger stays down.
 - **Touch:** `pointer` is the app's own id for a finger, the mouse or a pen. Up to 10 can be down at once. Cancel ends them all. A down for a pointer that is already down means its up was lost, so the server cancels the old touch before the new one starts.
 - **Key:** `keycode` and `meta state` are Android's `KeyEvent.KEYCODE_*` and `META_*` values. `repeat` counts auto-repeat and is 0 on the first down.
 - **Text:** typed with the keys of the device's virtual keyboard, accented letters as a dead key and a letter. Characters it has no keys for, such as æ, ø, å and emoji, are pasted through the device's clipboard, which then holds them.
 - **Scroll:** in wheel notches, positive to the right and up, like Android's `AXIS_HSCROLL` and `AXIS_VSCROLL`.
+- **Clipboard:** text only, at most 256 KiB of UTF-8, both ways. Because the server sends only changes it did not make, text from the app or from pasted characters never comes back.
 
-A payload is at most 64 KiB; a larger length means a broken stream.
+A payload is at most 256 KiB and one byte; a larger length means a broken stream.
 
 ## Ending
 

@@ -147,6 +147,28 @@ abstract class ControlMessage {
         }
     }
 
+    /** Text for the device's clipboard, and whether to paste it too. */
+    static final class Clipboard extends ControlMessage {
+        final boolean paste;
+        final String text;
+
+        Clipboard(boolean paste, String text) {
+            super(Protocol.TYPE_SET_CLIPBOARD);
+            this.paste = paste;
+            this.text = text;
+        }
+
+        @Override
+        String name() {
+            return "set clipboard";
+        }
+
+        @Override
+        public String toString() {
+            return "set clipboard " + (paste ? "and paste " : "") + Json.quote(text);
+        }
+    }
+
     /** Wheel notches, positive to the right and up. */
     static final class Scroll extends Positioned {
         final float horizontal;

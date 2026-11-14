@@ -40,6 +40,7 @@ public final class ProtocolTest {
         encodes(vectors, "frame_key", w -> w.writeFrame(true, 1_234_567L, KEY_FRAME, 0, KEY_FRAME.length));
         encodes(vectors, "frame_delta", w -> w.writeFrame(false, 1_251_234L, DELTA_FRAME, 0, DELTA_FRAME.length));
         encodes(vectors, "error", w -> w.writeError("encoder_failed", "No H.264 encoder\n\"quoted\" é"));
+        encodes(vectors, "clipboard", w -> w.writeClipboard("Hej på dig".getBytes(StandardCharsets.UTF_8)));
 
         decodes(vectors, "touch_down", "touch down pointer 1 at 600,960 on 1200x1920 pressure 1.0");
         decodes(vectors, "touch_up", "touch up pointer 4294967294 at 1199,0 on 1200x1920 pressure 0.5");
@@ -51,6 +52,7 @@ public final class ProtocolTest {
         decodes(vectors, "button_recent_apps", "button recent apps");
         decodes(vectors, "button_power", "button power");
         decodes(vectors, "scroll", "scroll at 600,960 on 1200x1920 by 0.25,-1.0");
+        decodes(vectors, "set_clipboard", "set clipboard and paste \"Hej på dig\"");
         readsControlStreams(unhex(vectors.get("button_home")));
         tracksFingers();
 

@@ -21,6 +21,7 @@ pub const TYPE_SESSION: u8 = 2;
 pub const TYPE_CONFIG: u8 = 3;
 pub const TYPE_FRAME: u8 = 4;
 pub const TYPE_ERROR: u8 = 5;
+pub const TYPE_CLIPBOARD: u8 = 6;
 
 /// Flags and PTS in front of a frame's data.
 const FRAME_PREFIX_LEN: usize = 9;
@@ -32,8 +33,13 @@ const TYPE_KEY: u8 = 17;
 const TYPE_TEXT: u8 = 18;
 const TYPE_BUTTON: u8 = 19;
 const TYPE_SCROLL: u8 = 20;
+const TYPE_SET_CLIPBOARD: u8 = 21;
+/// Clipboard text in either direction, in UTF-8 bytes.
+pub const MAX_CLIPBOARD: usize = 256 * 1024;
 /// The server refuses larger control messages.
-const MAX_CONTROL_PAYLOAD: usize = 64 * 1024;
+const MAX_CONTROL_PAYLOAD: usize = MAX_CLIPBOARD + 1;
+/// Android's `KeyEvent.KEYCODE_PASTE`.
+pub const KEYCODE_PASTE: u32 = 279;
 
 pub fn check_preamble(bytes: &[u8; PREAMBLE_LEN]) -> Result<(), AppError> {
     if &bytes[..4] != MAGIC {
@@ -191,6 +197,14 @@ pub enum Control {
         h_scroll: f32,
         v_scroll: f32,
     },
+    /// Text for the device's clipboard, pasted too when `paste` is set.
+    SetClipboard {
+        text: String,
+        paste: bool,
+    },
+    /// Ctrl+V in the web view: the app turns it into `SetClipboard` with the PC's text before
+    /// sending, because only the app can read the PC's clipboard.
+    Paste,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -277,9 +291,31 @@ impl Control {
                 out.extend_from_slice(&h_scroll.to_be_bytes());
                 out.extend_from_slice(&v_scroll.to_be_bytes());
             }
+            Self::SetClipboard { text, paste } => {
+                if text.len() > MAX_CLIPBOARD {
+                    return Err(AppError::new(
+                        "clipboard_too_large",
+                        format!("clipboard text of {} bytes", text.len()),
+                    ));
+                }
+                put_header(out, TYPE_SET_CLIPBOARD, 1 + text.len());
+                out.push(u8::from(*paste));
+                out.extend_from_slice(text.as_bytes());
+            }
+            Self::Paste => {
+                return Err(AppError::new(
+                    "bad_control",
+                    "paste becomes set clipboard before it is sent",
+                ));
+            }
         }
         Ok(())
     }
+}
+
+/// Text the device copied. The server sends valid UTF-8; anything else is shown as it is.
+pub fn parse_clipboard(payload: &[u8]) -> String {
+    String::from_utf8_lossy(payload).into_owned()
 }
 
 fn put_header(out: &mut Vec<u8>, kind: u8, length: usize) {
@@ -483,6 +519,13 @@ mod tests {
             ("button_recent_apps", button(Button::RecentApps)),
             ("button_power", button(Button::Power)),
             (
+                "set_clipboard",
+                Control::SetClipboard {
+                    text: "Hej på dig".into(),
+                    paste: true,
+                },
+            ),
+            (
                 "scroll",
                 Control::Scroll {
                     x: 600,
@@ -556,5 +599,23 @@ mod tests {
             text.encode(&mut Vec::new()).unwrap_err().code,
             "bad_control"
         );
+        let clip = Control::SetClipboard {
+            text: "a".repeat(MAX_CLIPBOARD + 1),
+            paste: false,
+        };
+        assert_eq!(
+            clip.encode(&mut Vec::new()).unwrap_err().code,
+            "clipboard_too_large"
+        );
+        assert!(Control::Paste.encode(&mut Vec::new()).is_err());
+    }
+
+    #[test]
+    fn decodes_the_device_clipboard() {
+        let (header, payload) = message("clipboard");
+        assert_eq!(header.kind, TYPE_CLIPBOARD);
+        assert_eq!(parse_clipboard(&payload), "Hej på dig");
+        let paste: Control = serde_json::from_str(r#"{"type":"paste"}"#).unwrap();
+        assert_eq!(paste, Control::Paste);
     }
 }

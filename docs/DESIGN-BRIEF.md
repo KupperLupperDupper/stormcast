@@ -49,6 +49,7 @@ Korte sætninger uden udråbstegn. Knapper siger handlingen: "Mirror screen", "S
 - Styring: mus, touch og pen bliver til touch på enheden, hjulet til scroll og tastaturet til taster og tekst, mens skærmen har fokus. Fokus vises med en accentring uden om billedet og en hjælpetekst, der siger, at Tab forlader skærmen, så tastaturet aldrig fanges (A11Y-03, WCAG 2.1.2). Tab, zoom med Ctrl og Alt+F4 bliver i appen.
 - Input sendes med det samme og i rækkefølge, uden debounce (PERF-05). Skærmen sender alle fingre videre, så enheden selv afgør knib og andre gestus; GES-05's "ignorér ekstra fingre" gælder egne gestus, og skærmen har ingen.
 - Tilbage, Hjem, Seneste apps og Tænd/sluk er ikonknapper i værktøjslinjen med Androids egne symboler (GES-06). Navnet står i `aria-label` og i en tooltip ved hover og tastaturfokus (CMP-14, A11Y-05). Tooltippen har solid flade, så den aldrig er glas på glas, og lægger sig aldrig over telefonbilledet. "Stop mirroring" er tekst, fordi det er Stormcasts egen handling, og et stop-ikon ville ligne Seneste apps.
+- Udklipsholder: det, der kopieres på enheden, kommer af sig selv i PC'ens udklipsholder, og Ctrl+V på skærmen indsætter PC'ens tekst på enheden. Kun tekst, og indholdet logges aldrig.
 - Højreklik er Tilbage, som med en mus på Android selv (GES-07). Et museklik på enhedsknapperne flytter ikke fokus fra skærmen, så man kan skrive videre.
 
 ## Afvigelser (KIT-04)

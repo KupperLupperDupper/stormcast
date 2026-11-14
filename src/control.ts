@@ -24,6 +24,7 @@ const META_NUM_LOCK = 0x200000;
 
 const KEYCODE_0 = 7;
 const KEYCODE_A = 29;
+const KEYCODE_V = 50;
 const KEYCODE_F1 = 131;
 const KEYCODE_NUMPAD_0 = 144;
 
@@ -172,6 +173,12 @@ export class DeviceControl {
   private keyDown(event: KeyboardEvent) {
     // A dead key or an input method is still composing; the next key brings the character.
     if (event.isComposing || event.key === "Dead" || event.key === "Process" || keepsForApp(event)) return;
+    // Ctrl+V pastes the PC's clipboard on the device; what the device copies reaches the PC by itself.
+    if (event.ctrlKey && !event.altKey && keycodeOf(event) === KEYCODE_V) {
+      event.preventDefault();
+      if (!event.repeat) this.send({ type: "paste" });
+      return;
+    }
     const text = typedText(event);
     if (text !== null) {
       event.preventDefault();

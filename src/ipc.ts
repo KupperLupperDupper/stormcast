@@ -50,7 +50,9 @@ export type ControlMessage =
   | { type: "key"; action: "down" | "up"; keycode: number; repeat: number; metaState: number }
   | { type: "text"; text: string }
   | { type: "button"; button: DeviceButton }
-  | { type: "scroll"; x: number; y: number; width: number; height: number; hScroll: number; vScroll: number };
+  | { type: "scroll"; x: number; y: number; width: number; height: number; hScroll: number; vScroll: number }
+  /** Ctrl+V: the app pastes the PC's clipboard text on the device. */
+  | { type: "paste" };
 
 export const getStartup = () => invoke<Startup>("get_startup");
 export const listDevices = () => invoke<Device[]>("list_devices");
