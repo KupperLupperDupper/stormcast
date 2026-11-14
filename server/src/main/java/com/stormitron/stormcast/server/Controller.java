@@ -8,6 +8,7 @@ import android.view.MotionEvent;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -56,9 +57,10 @@ final class Controller implements Runnable {
 
     /**
      * Reads control messages on a new thread. It reads them even when they cannot be injected, so
-     * the app is never blocked writing them. The streamer publishes each session's geometry.
+     * the app is never blocked writing them. The streamer publishes each session's geometry, and
+     * text copied on the device goes to the app through the writer.
      */
-    static void start(InputStream in, AtomicReference<Geometry> geometry) {
+    static void start(InputStream in, MessageWriter writer, AtomicReference<Geometry> geometry) {
         InputInjector injector = null;
         KeyCharacterMap keyboard = null;
         try {
@@ -67,9 +69,36 @@ final class Controller implements Runnable {
         } catch (ReflectiveOperationException | RuntimeException e) {
             Ln.w((injector == null ? "Control is not available: " : "No virtual keyboard; text is pasted: ") + e);
         }
+        if (injector != null) {
+            final InputInjector clipboard = injector;
+            try {
+                clipboard.watchClipboard(() -> sendClipboard(clipboard, writer));
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                Ln.w("The device's clipboard does not reach the app: " + e);
+            }
+        }
         Thread thread = new Thread(new Controller(in, geometry, injector, keyboard), "stormcast-control");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    /** Sends text copied on the device to the app. Runs on a binder thread; never logs the text. */
+    private static void sendClipboard(InputInjector injector, MessageWriter writer) {
+        String text = injector.newClipboardText();
+        if (text == null) {
+            return;
+        }
+        byte[] utf8 = text.getBytes(StandardCharsets.UTF_8);
+        if (utf8.length > Protocol.MAX_CLIPBOARD) {
+            Ln.w("Copied text of " + utf8.length + " bytes is too large for the PC's clipboard");
+            return;
+        }
+        try {
+            writer.writeClipboard(utf8);
+            writer.flush();
+        } catch (IOException e) {
+            // The connection closed; the streamer stops the server.
+        }
     }
 
     @Override
@@ -114,6 +143,12 @@ final class Controller implements Runnable {
                 break;
             case Protocol.TYPE_SCROLL:
                 scroll((ControlMessage.Scroll) message);
+                break;
+            case Protocol.TYPE_SET_CLIPBOARD:
+                ControlMessage.Clipboard clip = (ControlMessage.Clipboard) message;
+                if (injector.setClipboard(clip.text) && clip.paste) {
+                    pressPaste();
+                }
                 break;
             default:
                 break;
@@ -233,12 +268,16 @@ final class Controller implements Runnable {
             Ln.i("Control: pasting characters the virtual keyboard cannot type");
         }
         if (injector.setClipboard(text.toString())) {
-            long now = SystemClock.uptimeMillis();
-            // Wait until the app has pasted, so the next text cannot replace the clip before that.
-            injector.injectAndWait(keyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PASTE, 0, 0));
-            injector.inject(keyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PASTE, 0, 0));
+            pressPaste();
         }
         text.setLength(0);
+    }
+
+    /** Presses paste, and waits until the app has pasted, so the next text cannot replace the clip before that. */
+    private void pressPaste() {
+        long now = SystemClock.uptimeMillis();
+        injector.injectAndWait(keyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PASTE, 0, 0));
+        injector.inject(keyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PASTE, 0, 0));
     }
 
     private void scroll(ControlMessage.Scroll scroll) {

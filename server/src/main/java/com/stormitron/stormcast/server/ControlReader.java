@@ -59,6 +59,9 @@ final class ControlReader {
                 case Protocol.TYPE_SCROLL:
                     return new ControlMessage.Scroll(u16(data), u16(data), u16(data), u16(data),
                             data.getFloat(), data.getFloat());
+                case Protocol.TYPE_SET_CLIPBOARD:
+                    return new ControlMessage.Clipboard(data.get() != 0,
+                            new String(payload, 1, payload.length - 1, StandardCharsets.UTF_8));
                 default:
                     return null;
             }

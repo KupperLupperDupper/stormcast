@@ -10,7 +10,7 @@ use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -26,6 +26,8 @@ const DEVICE_SERVER_PATH: &str = "/data/local/tmp/stormcast-server.jar";
 const SERVER_CLASS: &str = "com.stormitron.stormcast.server.Server";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const SERVER_LOG_LINES: usize = 20;
+/// The same copied text again within this time is the same copy.
+const REPEATED_COPY_WINDOW: Duration = Duration::from_secs(1);
 
 // First byte of every message to the web view. Keep in sync with src/player.ts.
 const MSG_HELLO: u8 = 0;
@@ -69,10 +71,16 @@ impl MirrorState {
     }
 
     /// Sends control messages to the device in this order. Without a session they are dropped.
-    pub async fn send_control(&self, messages: &[protocol::Control]) -> Result<(), AppError> {
+    pub async fn send_control(&self, messages: Vec<protocol::Control>) -> Result<(), AppError> {
         let mut bytes = Vec::new();
         for message in messages {
-            message.encode(&mut bytes)?;
+            if matches!(message, protocol::Control::Paste) {
+                for message in paste_from_pc().await {
+                    message.encode(&mut bytes)?;
+                }
+            } else {
+                message.encode(&mut bytes)?;
+            }
         }
         self.control.send(&bytes).await
     }
@@ -252,6 +260,8 @@ async fn forward(
     video: &mut (impl AsyncRead + Unpin),
     channel: &Channel<Response>,
 ) -> Result<(), AppError> {
+    // A device can report one copy twice; the PC's clipboard history gets it once.
+    let mut last_copy: Option<(String, Instant)> = None;
     while let Some(header) = read_header(video).await? {
         let payload = read_payload(video, header.length).await?;
         match header.kind {
@@ -280,6 +290,16 @@ async fn forward(
                 send(channel, frame_message(&protocol::parse_frame(&payload)?))?;
             }
             protocol::TYPE_ERROR => return Err(protocol::parse_error(&payload).into()),
+            protocol::TYPE_CLIPBOARD => {
+                let text = protocol::parse_clipboard(&payload);
+                let repeated = last_copy
+                    .as_ref()
+                    .is_some_and(|(last, at)| *last == text && at.elapsed() < REPEATED_COPY_WINDOW);
+                if !repeated {
+                    last_copy = Some((text.clone(), Instant::now()));
+                    copy_to_pc(text);
+                }
+            }
             // Skipped, so a newer server with more message types still works.
             _ => {}
         }
@@ -306,6 +326,52 @@ async fn read_payload(
     let mut payload = vec![0u8; length as usize];
     video.read_exact(&mut payload).await?;
     Ok(payload)
+}
+
+/// What Ctrl+V sends: the PC's clipboard text, set on the device and pasted. Without text on the
+/// PC, the device pastes its own clipboard, as Ctrl+V does there.
+async fn paste_from_pc() -> Vec<protocol::Control> {
+    let text = pc_clipboard_text().await.unwrap_or_default();
+    if text.len() > protocol::MAX_CLIPBOARD {
+        log::warn!(
+            "the PC's clipboard holds {} bytes, more than the {} that can be pasted",
+            text.len(),
+            protocol::MAX_CLIPBOARD
+        );
+        return Vec::new();
+    }
+    if text.is_empty() {
+        return [protocol::KeyAction::Down, protocol::KeyAction::Up]
+            .map(|action| protocol::Control::Key {
+                action,
+                keycode: protocol::KEYCODE_PASTE,
+                repeat: 0,
+                meta_state: 0,
+            })
+            .to_vec();
+    }
+    vec![protocol::Control::SetClipboard { text, paste: true }]
+}
+
+/// The text on the PC's clipboard, if it holds any.
+async fn pc_clipboard_text() -> Option<String> {
+    tokio::task::spawn_blocking(|| {
+        arboard::Clipboard::new().and_then(|mut clipboard| clipboard.get_text())
+    })
+    .await
+    .ok()?
+    .ok()
+}
+
+/// Puts text copied on the device on the PC's clipboard. The text itself is never logged.
+fn copy_to_pc(text: String) {
+    tokio::task::spawn_blocking(move || {
+        let characters = text.chars().count();
+        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text)) {
+            Ok(()) => log::info!("copied {characters} characters from the device to the PC"),
+            Err(error) => log::warn!("could not copy to the PC's clipboard: {error}"),
+        }
+    });
 }
 
 fn hex(bytes: &[u8]) -> String {

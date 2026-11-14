@@ -1,6 +1,6 @@
 # Stormcast protocol test vectors (docs/PROTOCOL.md).
-# From the phone (preamble to error): the server's Java tests must encode exactly these bytes, and the app's Rust tests must decode them.
-# From the app (touch_down to scroll): the app's Rust tests must encode exactly these bytes, and the server's Java tests must decode them.
+# From the phone (preamble to clipboard): the server's Java tests must encode exactly these bytes, and the app's Rust tests must decode them.
+# From the app (touch_down to set_clipboard): the app's Rust tests must encode exactly these bytes, and the server's Java tests must decode them.
 # Format: name | hex. Spaces in the hex are ignored.
 preamble    | 5354524d 02
 hello       | 01000000 537b2264 65766963 65223a22 4c656e6f 766f2054 42333131 4655222c 22636f64 6563223a 22683236 34222c22 73657276 6572223a 22302e31 2e30222c 22616e64 726f6964 223a2231 36222c22 73646b22 3a33367d
@@ -9,6 +9,7 @@ config      | 03000000 14000000 01676400 2aac2b40 3c000000 0168ee3c 80
 frame_key   | 04000000 0f010000 00000012 d6870000 00016588
 frame_delta | 04000000 0f000000 00000013 17a20000 0001419a
 error       | 05000000 457b2263 6f646522 3a22656e 636f6465 725f6661 696c6564 222c226d 65737361 6765223a 224e6f20 482e3236 3420656e 636f6465 725c6e5c 2271756f 7465645c 2220c3a9 227d
+clipboard   | 06 0000000b  48 65 6a 20 70 c3a5 20 64 69 67
 touch_down  | 10 00000011  00 00000001 0258 03c0 04b0 0780 3f800000
 touch_up    | 10 00000011  02 fffffffe 04af 0000 04b0 0780 3f000000
 key_down    | 11 0000000d  00 0000001d 00000002 00003000
@@ -19,3 +20,4 @@ button_home | 13 00000001  01
 button_recent_apps | 13 00000001  02
 button_power | 13 00000001  03
 scroll      | 14 00000010  0258 03c0 04b0 0780 3e800000 bf800000
+set_clipboard | 15 0000000c  01 48 65 6a 20 70 c3a5 20 64 69 67

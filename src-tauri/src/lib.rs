@@ -61,7 +61,7 @@ async fn send_control(
     state: State<'_, MirrorState>,
     messages: Vec<protocol::Control>,
 ) -> Result<(), AppError> {
-    state.send_control(&messages).await
+    state.send_control(messages).await
 }
 
 #[tauri::command]

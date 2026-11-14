@@ -29,6 +29,7 @@ While mirroring, click or tap the screen to control the device:
 - The mouse, touch and a pen tap and swipe. Several fingers work too, for example to pinch.
 - The mouse wheel scrolls, and a right click is Back.
 - The keyboard types while the screen has focus. Press Tab to leave the screen. Characters the device's built-in key map lacks, such as æ, ø, å and emoji, are pasted through the device's clipboard, which then holds them.
+- Copy and paste work both ways: text you copy on the device lands on the PC's clipboard, and Ctrl+V on the screen pastes the PC's clipboard on the device. Text only, up to 256 KiB.
 - Back, Home, Recent apps and Power are buttons in the toolbar. Power turns the screen on or off.
 
 ## How it works

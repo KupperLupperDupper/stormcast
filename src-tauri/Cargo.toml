@@ -19,6 +19,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# The PC's clipboard, for copy and paste with the device. Text only.
+arboard = { version = "3", default-features = false }
 tauri = { version = "2.12", features = [] }
 tauri-plugin-log = "2.10"
 log = "0.4"

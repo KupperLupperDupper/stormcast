@@ -7,7 +7,9 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Writes the stream to the app: the preamble, then messages of [u8 type][u32 length][payload].
- * Integers are big-endian. Plain Java: tested on the JVM against protocol/vectors.txt.
+ * Integers are big-endian. Each message is written whole, also when the clipboard watcher writes
+ * from another thread than the streamer. Plain Java: tested on the JVM against
+ * protocol/vectors.txt.
  */
 final class MessageWriter {
     private static final int FRAME_PREFIX = 9; // flags + pts
@@ -18,12 +20,13 @@ final class MessageWriter {
         this.out = new DataOutputStream(out);
     }
 
-    void writePreamble() throws IOException {
+    synchronized void writePreamble() throws IOException {
         out.write(Protocol.MAGIC);
         out.writeByte(Protocol.VERSION);
     }
 
-    void writeHello(String device, String codec, String server, String android, int sdk) throws IOException {
+    synchronized void writeHello(String device, String codec, String server, String android, int sdk)
+            throws IOException {
         String json = "{\"device\":" + Json.quote(device)
                 + ",\"codec\":" + Json.quote(codec)
                 + ",\"server\":" + Json.quote(server)
@@ -32,31 +35,36 @@ final class MessageWriter {
         writeMessage(Protocol.TYPE_HELLO, json.getBytes(StandardCharsets.UTF_8));
     }
 
-    void writeSession(int width, int height, int rotation) throws IOException {
+    synchronized void writeSession(int width, int height, int rotation) throws IOException {
         header(Protocol.TYPE_SESSION, 9);
         out.writeInt(width);
         out.writeInt(height);
         out.writeByte(rotation);
     }
 
-    void writeConfig(byte[] data, int offset, int length) throws IOException {
+    synchronized void writeConfig(byte[] data, int offset, int length) throws IOException {
         header(Protocol.TYPE_CONFIG, length);
         out.write(data, offset, length);
     }
 
-    void writeFrame(boolean keyFrame, long ptsUs, byte[] data, int offset, int length) throws IOException {
+    synchronized void writeFrame(boolean keyFrame, long ptsUs, byte[] data, int offset, int length)
+            throws IOException {
         header(Protocol.TYPE_FRAME, FRAME_PREFIX + length);
         out.writeByte(keyFrame ? Protocol.FLAG_KEY_FRAME : 0);
         out.writeLong(ptsUs);
         out.write(data, offset, length);
     }
 
-    void writeError(String code, String message) throws IOException {
+    synchronized void writeError(String code, String message) throws IOException {
         String json = "{\"code\":" + Json.quote(code) + ",\"message\":" + Json.quote(String.valueOf(message)) + "}";
         writeMessage(Protocol.TYPE_ERROR, json.getBytes(StandardCharsets.UTF_8));
     }
 
-    void flush() throws IOException {
+    synchronized void writeClipboard(byte[] utf8) throws IOException {
+        writeMessage(Protocol.TYPE_CLIPBOARD, utf8);
+    }
+
+    synchronized void flush() throws IOException {
         out.flush();
     }
 

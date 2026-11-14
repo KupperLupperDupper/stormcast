@@ -61,7 +61,7 @@ public final class Server {
             writer.writeHello(deviceName(), "h264", VERSION, Build.VERSION.RELEASE, Build.VERSION.SDK_INT);
             writer.flush();
             AtomicReference<Geometry> geometry = new AtomicReference<>();
-            Controller.start(socket.getInputStream(), geometry);
+            Controller.start(socket.getInputStream(), writer, geometry);
             try {
                 new ScreenStreamer(options, writer, geometry).run();
                 return 0;
