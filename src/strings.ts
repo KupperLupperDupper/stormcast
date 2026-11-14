@@ -94,6 +94,14 @@ export const text = {
   details: "Technical details",
   screenLabel: "Mirrored device screen",
 
+  deviceButtons: "Device buttons",
+  back: "Back",
+  home: "Home",
+  recentApps: "Recent apps",
+  power: "Power",
+  controlHint: "Click or tap the screen to control the device.",
+  controlHintActive: "Keyboard input goes to the device. Press Tab to leave the screen.",
+
   connecting: (name: string) => `Starting mirroring on ${name}…`,
   connectingSlow: "The first start can take a few seconds while the device prepares its video encoder.",
   status: (width: number, height: number, fps: number) => `${width} × ${height} · ${fps} fps`,

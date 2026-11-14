@@ -1,5 +1,6 @@
 //! One mirroring session: push our server to the device, open the adb tunnel, start the
-//! server and forward its video to the web view over a Tauri channel.
+//! server, forward its video to the web view over a Tauri channel, and send the web view's
+//! control messages back on the same connection.
 
 use crate::adb::Adb;
 use crate::error::AppError;
@@ -12,7 +13,8 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tauri::ipc::{Channel, Response};
 use tauri::{AppHandle, Manager};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Child;
 use tokio::sync::Mutex;
@@ -36,6 +38,7 @@ const MSG_END: u8 = 4;
 #[derive(Default)]
 pub struct MirrorState {
     task: Mutex<Option<JoinHandle<()>>>,
+    control: ControlLink,
 }
 
 impl MirrorState {
@@ -45,8 +48,15 @@ impl MirrorState {
         let mut task = self.task.lock().await;
         if let Some(previous) = task.take() {
             previous.abort();
+            let _ = previous.await;
         }
-        *task = Some(tokio::spawn(run(app, serial, channel)));
+        self.control.detach().await;
+        *task = Some(tokio::spawn(run(
+            app,
+            serial,
+            channel,
+            self.control.clone(),
+        )));
     }
 
     /// Stops the session. Dropping it kills the server process and closes the socket.
@@ -55,11 +65,51 @@ impl MirrorState {
             task.abort();
             let _ = task.await;
         }
+        self.control.detach().await;
+    }
+
+    /// Sends control messages to the device in this order. Without a session they are dropped.
+    pub async fn send_control(&self, messages: &[protocol::Control]) -> Result<(), AppError> {
+        let mut bytes = Vec::new();
+        for message in messages {
+            message.encode(&mut bytes)?;
+        }
+        self.control.send(&bytes).await
     }
 }
 
-async fn run(app: AppHandle, serial: String, channel: Channel<Response>) {
-    let (code, detail) = match mirror(&app, &serial, &channel).await {
+/// The sending half of the session's connection, which carries the control messages.
+#[derive(Clone, Default)]
+struct ControlLink(Arc<Mutex<Option<OwnedWriteHalf>>>);
+
+impl ControlLink {
+    async fn attach(&self, writer: OwnedWriteHalf) {
+        *self.0.lock().await = Some(writer);
+    }
+
+    /// Dropping the writer closes the connection once the reading half is gone too.
+    async fn detach(&self) {
+        self.0.lock().await.take();
+    }
+
+    async fn send(&self, bytes: &[u8]) -> Result<(), AppError> {
+        let mut writer = self.0.lock().await;
+        let Some(stream) = writer.as_mut() else {
+            return Ok(());
+        };
+        if let Err(error) = stream.write_all(bytes).await {
+            // The connection is gone; the video side reports why.
+            writer.take();
+            return Err(AppError::new("control_failed", error.to_string()));
+        }
+        Ok(())
+    }
+}
+
+async fn run(app: AppHandle, serial: String, channel: Channel<Response>, control: ControlLink) {
+    let result = mirror(&app, &serial, &channel, &control).await;
+    control.detach().await;
+    let (code, detail) = match result {
         Ok(()) => (
             "stream_ended",
             "the device closed the video stream".to_string(),
@@ -75,10 +125,11 @@ async fn mirror(
     app: &AppHandle,
     serial: &str,
     channel: &Channel<Response>,
+    control: &ControlLink,
 ) -> Result<(), AppError> {
     let adb = Adb::locate(app)?;
     let server = server_path(app)?;
-    let mut session = connect(&adb, serial, &server).await?;
+    let session = connect(&adb, serial, &server).await?;
     log::info!(
         "mirroring {serial}: {} (server {})",
         session.hello.device,
@@ -86,7 +137,9 @@ async fn mirror(
     );
     let hello = serde_json::json!({ "deviceName": session.hello.device });
     send(channel, message(MSG_HELLO, hello.to_string().as_bytes()))?;
-    forward(&mut session.video, channel).await
+    let (mut video, writer) = session.video.into_split();
+    control.attach(writer).await;
+    forward(&mut video, channel).await
 }
 
 struct Session {
@@ -195,7 +248,10 @@ async fn connect(adb: &Adb, serial: &str, server: &Path) -> Result<Session, AppE
 }
 
 /// Forwards the server's messages to the web view until the device closes the stream.
-async fn forward(video: &mut TcpStream, channel: &Channel<Response>) -> Result<(), AppError> {
+async fn forward(
+    video: &mut (impl AsyncRead + Unpin),
+    channel: &Channel<Response>,
+) -> Result<(), AppError> {
     while let Some(header) = read_header(video).await? {
         let payload = read_payload(video, header.length).await?;
         match header.kind {
@@ -232,7 +288,9 @@ async fn forward(video: &mut TcpStream, channel: &Channel<Response>) -> Result<(
 }
 
 /// The next message header, or `None` when the device closed the stream.
-async fn read_header(video: &mut TcpStream) -> Result<Option<protocol::Header>, AppError> {
+async fn read_header(
+    video: &mut (impl AsyncRead + Unpin),
+) -> Result<Option<protocol::Header>, AppError> {
     let mut bytes = [0u8; protocol::HEADER_LEN];
     match video.read_exact(&mut bytes).await {
         Ok(_) => protocol::parse_header(&bytes).map(Some),
@@ -241,7 +299,10 @@ async fn read_header(video: &mut TcpStream) -> Result<Option<protocol::Header>, 
     }
 }
 
-async fn read_payload(video: &mut TcpStream, length: u32) -> Result<Vec<u8>, AppError> {
+async fn read_payload(
+    video: &mut (impl AsyncRead + Unpin),
+    length: u32,
+) -> Result<Vec<u8>, AppError> {
     let mut payload = vec![0u8; length as usize];
     video.read_exact(&mut payload).await?;
     Ok(payload)

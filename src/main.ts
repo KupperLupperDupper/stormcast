@@ -1,6 +1,8 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
+import { DeviceControl } from "./control";
 import { h } from "./dom";
+import { icon } from "./icons";
 import {
   asAppError,
   getStartup,
@@ -10,10 +12,12 @@ import {
   stopMirror,
   type AppError,
   type Device,
+  type DeviceButton,
   type Startup,
 } from "./ipc";
 import { MirrorPlayer } from "./player";
 import { text } from "./strings";
+import { hideTooltip, withTooltip } from "./tooltip";
 
 type View =
   | { kind: "searching" }
@@ -26,7 +30,10 @@ type View =
 
 const POLL_INTERVAL_MS = 1500;
 const SLOW_CONNECT_MS = 4000;
-const SMOKE_MIRROR_MS = 8000;
+const SMOKE_FIRST_FRAME_MS = 20000;
+const SMOKE_SETTLE_MS = 1500;
+const SMOKE_INPUT_MS = 3000;
+const SMOKE_RESTORE_MS = 1500;
 const SMOKE_TIMEOUT_MS = 45000;
 
 const deviceList = byId("device-list");
@@ -38,6 +45,7 @@ let devices: Device[] = [];
 let renderedDevices = "";
 let view: View = { kind: "searching" };
 let player: MirrorPlayer | null = null;
+let control: DeviceControl | null = null;
 let session = 0;
 let statusText: HTMLElement | null = null;
 let smoke: "off" | "waiting" | "running" | "done" = "off";
@@ -143,7 +151,14 @@ async function poll() {
 async function connect(serial: string) {
   await disconnect(false);
   const id = ++session;
-  const canvas = h("canvas", { class: "screen__video", role: "img", "aria-label": text.screenLabel });
+  const canvas = h("canvas", {
+    class: "screen__video",
+    // While the screen has focus, the keyboard controls the device; Tab leaves it (A11Y-03).
+    tabindex: "0",
+    role: "application",
+    "aria-label": text.screenLabel,
+    "aria-describedby": "control-hint-active",
+  });
   const current = new MirrorPlayer(canvas, {
     hello: (deviceName) => {
       if (id !== session) return;
@@ -156,6 +171,7 @@ async function connect(serial: string) {
     },
   });
   player = current;
+  control = new DeviceControl(canvas);
   setView({ kind: "connecting", serial });
   window.setTimeout(() => {
     // PAT-02: a long wait explains itself. The hint already has its space, so nothing
@@ -173,11 +189,17 @@ async function connect(serial: string) {
   }
 }
 
-function failSession(serial: string, error: AppError) {
+function endSession() {
   session++;
   player?.close();
   player = null;
+  control?.close();
+  control = null;
   statusText = null;
+}
+
+function failSession(serial: string, error: AppError) {
+  endSession();
   setView({ kind: "error", serial, error });
   announce(text.error(error.code).title);
   if (smoke === "running") void finishSmoke(error);
@@ -185,10 +207,7 @@ function failSession(serial: string, error: AppError) {
 
 async function disconnect(showPicker = true) {
   const wasActive = player !== null;
-  session++;
-  player?.close();
-  player = null;
-  statusText = null;
+  endSession();
   if (wasActive) await stopMirror().catch((e) => console.warn("Stopping failed", e));
   if (showPicker) {
     setView(devices.length === 0 ? { kind: "no-device" } : { kind: "pick" });
@@ -200,11 +219,17 @@ async function disconnect(showPicker = true) {
 
 function renderStage() {
   const hadFocus = stage.contains(document.activeElement);
+  hideTooltip();
   statusText = null;
   stage.replaceChildren(stageContent());
   if (hadFocus) {
-    // A11Y-09: the focused element is gone, so move focus on purpose.
-    (stage.querySelector<HTMLElement>(".button--primary") ?? stage.querySelector<HTMLElement>("#stage-title"))?.focus();
+    // A11Y-09: the focused element is gone, so move focus on purpose. When mirroring starts,
+    // that is the screen, ready for the keyboard.
+    (
+      stage.querySelector<HTMLElement>(".button--primary") ??
+      stage.querySelector<HTMLElement>(".screen__video") ??
+      stage.querySelector<HTMLElement>("#stage-title")
+    )?.focus();
   }
 }
 
@@ -268,10 +293,46 @@ function mirrorView(deviceName: string): Node {
       { class: "toolbar panel" },
       h("span", { class: "toolbar__title" }, deviceName),
       statusText,
+      h(
+        "div",
+        { class: "toolbar__group", role: "group", "aria-label": text.deviceButtons },
+        deviceButton(text.back, "back"),
+        deviceButton(text.home, "home"),
+        deviceButton(text.recentApps, "recentApps"),
+        deviceButton(text.power, "power"),
+      ),
       button(text.stop, () => void disconnect()),
+      // Says whether the keyboard goes to the device. Both lines keep their space, so
+      // switching moves nothing (LAY-02).
+      h(
+        "p",
+        { class: "control-hint" },
+        h("span", { class: "control-hint__idle" }, text.controlHint),
+        h("span", { class: "control-hint__active", id: "control-hint-active" }, text.controlHintActive),
+      ),
     ),
     // The mirrored screen never sits under glass or any other layer.
     h("div", { class: "screen" }, player?.canvas ?? null),
+  );
+}
+
+/**
+ * A device button with Android's own symbol; the name is in aria-label and the tooltip (CMP-14).
+ * A mouse click leaves focus on the screen, so typing can go on.
+ */
+function deviceButton(label: string, which: DeviceButton) {
+  return withTooltip(
+    h(
+      "button",
+      {
+        class: "button button--secondary button--icon",
+        type: "button",
+        "aria-label": label,
+        onmousedown: (event: Event) => event.preventDefault(),
+        onclick: () => control?.button(which),
+      },
+      icon(which),
+    ),
   );
 }
 
@@ -302,21 +363,67 @@ window.setInterval(() => {
 
 // ---------- Smoke test (STORMCAST_SMOKE=1) ----------
 
+interface SmokeInput {
+  /** The picture changed after Recent apps: the server got the input and injected it. */
+  applied: boolean;
+  /** From sending the input to the first changed picture on screen. */
+  latencyMs: number | null;
+}
+
 function smokeStep() {
   if (smoke !== "waiting") return;
   const ready = devices.find((device) => device.state === "device");
   if (!ready) return;
   smoke = "running";
-  void connect(ready.serial);
-  window.setTimeout(() => void finishSmoke(), SMOKE_MIRROR_MS);
+  void runSmoke(ready.serial);
 }
 
-async function finishSmoke(error?: AppError) {
+/** Mirrors the first ready device, opens Recent apps until the picture changes, and goes Back. */
+async function runSmoke(serial: string) {
+  void connect(serial);
+  const framed = await waitUntil(() => (player?.stats().framesDecoded ?? 0) > 0, SMOKE_FIRST_FRAME_MS);
+  if (!framed) return finishSmoke({ code: "no_frames", detail: "no frame was decoded" });
+  await sleep(SMOKE_SETTLE_MS);
+  const current = player;
+  const device = control;
+  if (smoke !== "running" || !current || !device) return;
+  const changed = current.waitForChange(SMOKE_INPUT_MS);
+  const sentAt = performance.now();
+  device.button("recentApps");
+  const changedAt = await changed;
+  device.button("back");
+  await sleep(SMOKE_RESTORE_MS);
+  await finishSmoke(undefined, {
+    applied: changedAt !== null,
+    latencyMs: changedAt === null ? null : Math.round(changedAt - sentAt),
+  });
+}
+
+async function finishSmoke(error?: AppError, input?: SmokeInput) {
   if (smoke === "done" || smoke === "off") return;
   smoke = "done";
   const stats = player?.stats() ?? null;
-  const ok = !error && stats !== null && stats.framesDecoded > 0 && stats.decoderErrors === 0;
-  await smokeReport({ ok, error: error ?? null, stats, view: view.kind, appearance: startup?.appearance ?? null });
+  const ok =
+    !error && stats !== null && stats.framesDecoded > 0 && stats.decoderErrors === 0 && input?.applied === true;
+  await smokeReport({
+    ok,
+    error: error ?? null,
+    stats,
+    input: input ?? null,
+    view: view.kind,
+    appearance: startup?.appearance ?? null,
+  });
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+async function waitUntil(condition: () => boolean, timeoutMs: number): Promise<boolean> {
+  const end = performance.now() + timeoutMs;
+  while (!condition()) {
+    if (performance.now() > end) return false;
+    await sleep(100);
+  }
+  return true;
 }
 
 // ---------- Start ----------

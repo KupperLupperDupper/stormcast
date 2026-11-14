@@ -2,18 +2,20 @@
 //! in `docs/PROTOCOL.md`. Both sides test against `protocol/vectors.txt`.
 //!
 //! The phone sends a 5-byte preamble (`STRM` and the version), then messages of
-//! `[u8 type][u32 length][payload]`. Integers are big-endian. Unknown types are skipped.
+//! `[u8 type][u32 length][payload]`. The app sends control messages with the same framing on the
+//! same connection. Integers are big-endian. Unknown types are skipped.
 
 use crate::error::AppError;
 use serde::Deserialize;
 
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2;
 pub const PREAMBLE_LEN: usize = 5;
 pub const HEADER_LEN: usize = 5;
 const MAGIC: &[u8; 4] = b"STRM";
 /// A larger message means a broken stream; refuse it instead of allocating.
 const MAX_PAYLOAD: u32 = 64 * 1024 * 1024;
 
+// From the phone to the app.
 pub const TYPE_HELLO: u8 = 1;
 pub const TYPE_SESSION: u8 = 2;
 pub const TYPE_CONFIG: u8 = 3;
@@ -23,6 +25,15 @@ pub const TYPE_ERROR: u8 = 5;
 /// Flags and PTS in front of a frame's data.
 const FRAME_PREFIX_LEN: usize = 9;
 const FLAG_KEY_FRAME: u8 = 1;
+
+// From the app to the phone.
+const TYPE_TOUCH: u8 = 16;
+const TYPE_KEY: u8 = 17;
+const TYPE_TEXT: u8 = 18;
+const TYPE_BUTTON: u8 = 19;
+const TYPE_SCROLL: u8 = 20;
+/// The server refuses larger control messages.
+const MAX_CONTROL_PAYLOAD: usize = 64 * 1024;
 
 pub fn check_preamble(bytes: &[u8; PREAMBLE_LEN]) -> Result<(), AppError> {
     if &bytes[..4] != MAGIC {
@@ -140,6 +151,149 @@ impl From<ServerError> for AppError {
     }
 }
 
+/// A control message from the web view (`src/control.ts`) for the device.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum Control {
+    /// A finger, the mouse or a pen at pixel `x`, `y` on a video of `width` × `height`.
+    Touch {
+        action: TouchAction,
+        pointer: u32,
+        x: u16,
+        y: u16,
+        width: u16,
+        height: u16,
+        pressure: f32,
+    },
+    /// Android's keycode and meta state; `repeat` counts auto-repeat.
+    Key {
+        action: KeyAction,
+        keycode: u32,
+        repeat: u32,
+        meta_state: u32,
+    },
+    Text {
+        text: String,
+    },
+    Button {
+        button: Button,
+    },
+    /// Wheel notches at pixel `x`, `y`, positive to the right and up.
+    Scroll {
+        x: u16,
+        y: u16,
+        width: u16,
+        height: u16,
+        h_scroll: f32,
+        v_scroll: f32,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TouchAction {
+    Down = 0,
+    Move = 1,
+    Up = 2,
+    Cancel = 3,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyAction {
+    Down = 0,
+    Up = 1,
+}
+
+/// Android's navigation buttons and the power button.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Button {
+    Back = 0,
+    Home = 1,
+    RecentApps = 2,
+    Power = 3,
+}
+
+impl Control {
+    /// Appends the message as `[u8 type][u32 length][payload]`.
+    pub fn encode(&self, out: &mut Vec<u8>) -> Result<(), AppError> {
+        match self {
+            Self::Touch {
+                action,
+                pointer,
+                x,
+                y,
+                width,
+                height,
+                pressure,
+            } => {
+                put_header(out, TYPE_TOUCH, 17);
+                out.push(*action as u8);
+                out.extend_from_slice(&pointer.to_be_bytes());
+                put_position(out, [*x, *y, *width, *height]);
+                out.extend_from_slice(&pressure.to_be_bytes());
+            }
+            Self::Key {
+                action,
+                keycode,
+                repeat,
+                meta_state,
+            } => {
+                put_header(out, TYPE_KEY, 13);
+                out.push(*action as u8);
+                for value in [keycode, repeat, meta_state] {
+                    out.extend_from_slice(&value.to_be_bytes());
+                }
+            }
+            Self::Text { text } => {
+                if text.len() > MAX_CONTROL_PAYLOAD {
+                    return Err(AppError::new(
+                        "bad_control",
+                        format!("text of {} bytes", text.len()),
+                    ));
+                }
+                put_header(out, TYPE_TEXT, text.len());
+                out.extend_from_slice(text.as_bytes());
+            }
+            Self::Button { button } => {
+                put_header(out, TYPE_BUTTON, 1);
+                out.push(*button as u8);
+            }
+            Self::Scroll {
+                x,
+                y,
+                width,
+                height,
+                h_scroll,
+                v_scroll,
+            } => {
+                put_header(out, TYPE_SCROLL, 16);
+                put_position(out, [*x, *y, *width, *height]);
+                out.extend_from_slice(&h_scroll.to_be_bytes());
+                out.extend_from_slice(&v_scroll.to_be_bytes());
+            }
+        }
+        Ok(())
+    }
+}
+
+fn put_header(out: &mut Vec<u8>, kind: u8, length: usize) {
+    out.push(kind);
+    out.extend_from_slice(&u32::try_from(length).unwrap_or(u32::MAX).to_be_bytes());
+}
+
+/// `x`, `y`, `width` and `height` as `u16`.
+fn put_position(out: &mut Vec<u8>, values: [u16; 4]) {
+    for value in values {
+        out.extend_from_slice(&value.to_be_bytes());
+    }
+}
+
 fn be32(bytes: &[u8]) -> u32 {
     u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
 }
@@ -191,11 +345,11 @@ mod tests {
     #[test]
     fn rejects_a_wrong_magic_or_version() {
         assert_eq!(
-            check_preamble(b"XTRM\x01").unwrap_err().code,
+            check_preamble(b"XTRM\x02").unwrap_err().code,
             "server_failed"
         );
         assert_eq!(
-            check_preamble(b"STRM\x02").unwrap_err().code,
+            check_preamble(b"STRM\x01").unwrap_err().code,
             "protocol_mismatch"
         );
     }
@@ -280,5 +434,127 @@ mod tests {
         assert!(parse_header(&[TYPE_FRAME, 0xff, 0xff, 0xff, 0xff]).is_err());
         assert!(parse_session(&[0; 8]).is_err());
         assert!(parse_frame(&[0; 8]).is_err());
+    }
+
+    #[test]
+    fn encodes_control_messages() {
+        let touch = |action, pointer, x, y, pressure| Control::Touch {
+            action,
+            pointer,
+            x,
+            y,
+            width: 1200,
+            height: 1920,
+            pressure,
+        };
+        let button = |button| Control::Button { button };
+        let cases = [
+            ("touch_down", touch(TouchAction::Down, 1, 600, 960, 1.0)),
+            (
+                "touch_up",
+                touch(TouchAction::Up, 0xffff_fffe, 1199, 0, 0.5),
+            ),
+            (
+                "key_down",
+                Control::Key {
+                    action: KeyAction::Down,
+                    keycode: 29,
+                    repeat: 2,
+                    meta_state: 0x3000,
+                },
+            ),
+            (
+                "key_up",
+                Control::Key {
+                    action: KeyAction::Up,
+                    keycode: 66,
+                    repeat: 0,
+                    meta_state: 0,
+                },
+            ),
+            (
+                "text",
+                Control::Text {
+                    text: "Hi é😀".into(),
+                },
+            ),
+            ("button_back", button(Button::Back)),
+            ("button_home", button(Button::Home)),
+            ("button_recent_apps", button(Button::RecentApps)),
+            ("button_power", button(Button::Power)),
+            (
+                "scroll",
+                Control::Scroll {
+                    x: 600,
+                    y: 960,
+                    width: 1200,
+                    height: 1920,
+                    h_scroll: 0.25,
+                    v_scroll: -1.0,
+                },
+            ),
+        ];
+        for (name, control) in cases {
+            let mut bytes = Vec::new();
+            control.encode(&mut bytes).unwrap();
+            assert_eq!(bytes, vector(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn reads_control_messages_from_the_web_view() {
+        let json = r#"[
+            {"type":"touch","action":"cancel","pointer":3,"x":1,"y":2,"width":1200,"height":1920,"pressure":0.5},
+            {"type":"key","action":"up","keycode":66,"repeat":0,"metaState":4096},
+            {"type":"text","text":"æøå"},
+            {"type":"button","button":"recentApps"},
+            {"type":"scroll","x":1,"y":2,"width":1200,"height":1920,"hScroll":0,"vScroll":-1}
+        ]"#;
+        let messages: Vec<Control> = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            messages,
+            [
+                Control::Touch {
+                    action: TouchAction::Cancel,
+                    pointer: 3,
+                    x: 1,
+                    y: 2,
+                    width: 1200,
+                    height: 1920,
+                    pressure: 0.5
+                },
+                Control::Key {
+                    action: KeyAction::Up,
+                    keycode: 66,
+                    repeat: 0,
+                    meta_state: 4096
+                },
+                Control::Text {
+                    text: "æøå".into()
+                },
+                Control::Button {
+                    button: Button::RecentApps
+                },
+                Control::Scroll {
+                    x: 1,
+                    y: 2,
+                    width: 1200,
+                    height: 1920,
+                    h_scroll: 0.0,
+                    v_scroll: -1.0
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn refuses_text_the_server_would_refuse() {
+        let text = Control::Text {
+            text: "a".repeat(MAX_CONTROL_PAYLOAD + 1),
+        };
+        assert_eq!(
+            text.encode(&mut Vec::new()).unwrap_err().code,
+            "bad_control"
+        );
     }
 }

@@ -10,6 +10,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Stormcast's phone-side server. The Windows app copies this jar to the device and starts it
@@ -17,11 +18,11 @@ import java.util.Locale;
  *
  * <pre>
  * CLASSPATH=/data/local/tmp/stormcast-server.jar app_process / \
- *     com.stormitron.stormcast.server.Server 1 socket=stormcast_0123abcd
+ *     com.stormitron.stormcast.server.Server 2 socket=stormcast_0123abcd
  * </pre>
  *
- * It connects to the app through the adb reverse tunnel and streams the screen as H.264 with
- * the protocol in docs/PROTOCOL.md.
+ * It connects to the app through the adb reverse tunnel, streams the screen as H.264 and
+ * injects the app's input, with the protocol in docs/PROTOCOL.md.
  */
 public final class Server {
     public static final String VERSION = "0.1.0";
@@ -59,8 +60,10 @@ public final class Server {
             writer.writePreamble();
             writer.writeHello(deviceName(), "h264", VERSION, Build.VERSION.RELEASE, Build.VERSION.SDK_INT);
             writer.flush();
+            AtomicReference<Geometry> geometry = new AtomicReference<>();
+            Controller.start(socket.getInputStream(), geometry);
             try {
-                new ScreenStreamer(options, writer).run();
+                new ScreenStreamer(options, writer, geometry).run();
                 return 0;
             } catch (StreamerException e) {
                 Ln.e(e.code + ": " + e.getMessage());

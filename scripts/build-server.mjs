@@ -15,7 +15,18 @@ const MIN_PLATFORM = 30;
 const MIN_API = 29;
 const TEST_CLASS = "com.stormitron.stormcast.server.ProtocolTest";
 // Classes the JVM tests compile without Android. They must not import android.*.
-const PLAIN_JAVA = ["Protocol.java", "MessageWriter.java", "Json.java", "VideoSize.java", "Options.java"];
+const PLAIN_JAVA = [
+  "Protocol.java",
+  "MessageWriter.java",
+  "Json.java",
+  "VideoSize.java",
+  "Options.java",
+  "Ln.java",
+  "ControlMessage.java",
+  "ControlReader.java",
+  "TouchPointers.java",
+  "Geometry.java",
+];
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const serverDir = join(root, "server");

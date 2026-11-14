@@ -46,6 +46,10 @@ Korte sætninger uden udråbstegn. Knapper siger handlingen: "Mirror screen", "S
 - Telefonbilledet vises i sin egen opløsning, skaleret til pladsen, og intet ligger ovenpå.
 - Knapper er 40 px høje med et trykområde på 48 px (CMP-02).
 - Lav forsinkelse: hardware-afkodning, og det nyeste billede vinder.
+- Styring: mus, touch og pen bliver til touch på enheden, hjulet til scroll og tastaturet til taster og tekst, mens skærmen har fokus. Fokus vises med en accentring uden om billedet og en hjælpetekst, der siger, at Tab forlader skærmen, så tastaturet aldrig fanges (A11Y-03, WCAG 2.1.2). Tab, zoom med Ctrl og Alt+F4 bliver i appen.
+- Input sendes med det samme og i rækkefølge, uden debounce (PERF-05). Skærmen sender alle fingre videre, så enheden selv afgør knib og andre gestus; GES-05's "ignorér ekstra fingre" gælder egne gestus, og skærmen har ingen.
+- Tilbage, Hjem, Seneste apps og Tænd/sluk er ikonknapper i værktøjslinjen med Androids egne symboler (GES-06). Navnet står i `aria-label` og i en tooltip ved hover og tastaturfokus (CMP-14, A11Y-05). Tooltippen har solid flade, så den aldrig er glas på glas, og lægger sig aldrig over telefonbilledet. "Stop mirroring" er tekst, fordi det er Stormcasts egen handling, og et stop-ikon ville ligne Seneste apps.
+- Højreklik er Tilbage, som med en mus på Android selv (GES-07). Et museklik på enhedsknapperne flytter ikke fokus fra skærmen, så man kan skrive videre.
 
 ## Afvigelser (KIT-04)
 
@@ -55,5 +59,5 @@ Korte sætninger uden udråbstegn. Knapper siger handlingen: "Mirror screen", "S
 
 ## Tjek i projektet (QA-02)
 - CI (`.github/workflows/ci.yml`): typecheck og build, kontrast-tjek, `cargo fmt`, `clippy` og Rust-tests.
-- Rigtig enhed (QA-04): røgtesten med `STORMCAST_SMOKE=1` spejler den første klar enhed og tæller afkodede billeder.
+- Rigtig enhed (QA-04): røgtesten med `STORMCAST_SMOKE=1` spejler den første klar enhed, tæller afkodede billeder, trykker Seneste apps og Tilbage og måler tiden fra input til nyt billede.
 - I hånden indtil videre: glaspanelernes kontrast over hvidt og sort skrivebord, skærmlæser (A11Y-08) og 200 % zoom (TYP-02).

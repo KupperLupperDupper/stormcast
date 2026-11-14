@@ -10,6 +10,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Encodes the mirrored screen with the device's H.264 encoder and writes it to the app. When
@@ -26,13 +27,16 @@ final class ScreenStreamer {
 
     private final Options options;
     private final MessageWriter writer;
+    /** The current session's geometry, for the controller to map positions to the display. */
+    private final AtomicReference<Geometry> geometry;
     private final AtomicBoolean restartRequested = new AtomicBoolean();
     private volatile MediaCodec activeCodec;
     private volatile DisplayCapture.Info sessionInfo;
 
-    ScreenStreamer(Options options, MessageWriter writer) {
+    ScreenStreamer(Options options, MessageWriter writer, AtomicReference<Geometry> geometry) {
         this.options = options;
         this.writer = writer;
+        this.geometry = geometry;
     }
 
     /** Streams until the app closes the connection (IOException) or capture fails. */
@@ -58,6 +62,7 @@ final class ScreenStreamer {
                     continue;
                 }
                 Ln.i("Session: display " + info + ", video " + size[0] + "x" + size[1]);
+                geometry.set(new Geometry(size[0], size[1], info.width, info.height));
                 restartRequested.set(false);
                 sessionInfo = info;
                 activeCodec = session.codec;
