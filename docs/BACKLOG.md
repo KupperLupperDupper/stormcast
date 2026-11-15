@@ -4,7 +4,7 @@ The queue across sessions (PRJ-04): one table per lane (swimlane), and every ite
 
 - **Status:** Idea · Next · Doing (session or branch) · Waiting (on what) · Done (date)
 - **Rules:** set an item to "Doing" with the session's name before work starts, and at most one per session. Do not touch items another session is doing. The commit message names the ID. Done items move to Archive when they are a month old.
-- **Next ID:** B-013
+- **Next ID:** B-014
 
 ## Lane: Project
 | ID | Item | Status | Note |
@@ -33,6 +33,7 @@ The queue across sessions (PRJ-04): one table per lane (swimlane), and every ite
 |---|---|---|---|
 | B-005 | Release 0.2.0 with the sound listed under Unreleased in `CHANGELOG.md` | Idea | The tag must match `version` in `package.json` |
 | B-006 | Code-sign the installer and zip so SmartScreen does not warn | Idea | Known issue in 0.1.0 |
+| B-013 | Fix the security findings before the next release (DEP-02, DEP-03, pinned adb, SEC-05, SEC-06) | Done (2026-11-15) | `--locked` in CI and release, a dependency audit job, platform-tools 37.0.1 checked against a committed SHA-256, deny rules in `.claude/settings.json`. `/security-review` found nothing |
 
 ## Archive
 | ID | Item | Status | Note |
