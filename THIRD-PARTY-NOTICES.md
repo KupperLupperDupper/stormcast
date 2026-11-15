@@ -4,7 +4,7 @@ Stormcast releases include the software below. Its own licenses apply to those p
 
 ## Android SDK Platform-Tools (adb)
 
-- `adb.exe`, `AdbWinApi.dll` and `AdbWinUsbApi.dll` from Google's Android SDK Platform-Tools.
+- `adb.exe`, `AdbWinApi.dll` and `AdbWinUsbApi.dll` from Google's Android SDK Platform-Tools 37.0.1, checked against a fixed SHA-256 in `scripts/fetch-adb.mjs`.
 - Source: https://developer.android.com/tools/releases/platform-tools
 - License: see `platform-tools/NOTICE.txt` in the release.
 
