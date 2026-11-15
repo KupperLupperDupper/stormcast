@@ -40,7 +40,7 @@ docs/        BRAIN, BACKLOG, LOG, ARCHITECTURE, DECISIONS, PROTOCOL and DESIGN-B
 - The phone picture never sits under glass or any other layer.
 - The UI follows the UI rulebook; contrast is checked with `npm run check:contrast`.
 
-## 6. Build, test and operation
+## 6. Build, test and operations
 - The commands are in [BRAIN.md](BRAIN.md), and CI (`.github/workflows/ci.yml`) runs the same checks.
 - Release: the tag `vX.Y.Z` matches `version` in `package.json`. `release.yml` builds the installer and the portable zip, writes `SHA256SUMS.txt`, attests the build and publishes with the version's section in `CHANGELOG.md` as notes.
 - The files are not code-signed yet (B-006).

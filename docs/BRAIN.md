@@ -8,7 +8,7 @@ Windows app that mirrors and controls an Android screen over USB and plays the d
 ## Where things are
 The Java code is in `server/src/main/java/com/stormitron/stormcast/server/`; the Java files below are there.
 
-| To … | See |
+| If you need to … | See |
 |---|---|
 | understand the whole | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | know why something is the way it is | [DECISIONS.md](DECISIONS.md) |
@@ -38,6 +38,6 @@ The Java code is in `server/src/main/java/com/stormitron/stormcast/server/`; the
 - `$env:STORMCAST_SKIN = "solid"` or `"glass"` forces a skin.
 - Before committing, also `node ~/docs/projects/tools/check.mjs .`
 
-## Pitfalls
+## Gotchas
 - The Java code is Java 8 syntax without libraries, but is built with JDK 17+.
 - CI runs the same checks as above (`.github/workflows/ci.yml`).

@@ -1,6 +1,6 @@
 # Stormcast
 
-Windows app that mirrors an Android screen over USB. The project map, the commands and the pitfalls are in `docs/BRAIN.md`, imported below; status is in `docs/BACKLOG.md` and `docs/LOG.md`. All documentation is in English.
+Windows app that mirrors an Android screen over USB. The project map, the commands and the gotchas are in `docs/BRAIN.md`, imported below; status is in `docs/BACKLOG.md` and `docs/LOG.md`. All documentation is in English.
 
 @~/docs/ui-rulebook/RULEBOOK.md
 Follow projects: @~/docs/projects/PROJECTS.md
