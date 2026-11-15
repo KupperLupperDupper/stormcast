@@ -1,29 +1,10 @@
 # Stormcast
 
-Windows-app, der spejler en Android-skærm over USB. Tauri 2: Rust i `src-tauri/`, TypeScript og CSS i `src/`, og vores egen telefonserver i Java i `server/`.
+Windows-app, der spejler en Android-skærm over USB. Kortet over projektet, kommandoerne og fælderne står i `docs/BRAIN.md`, som importeres herunder; status står i `docs/BACKLOG.md` og `docs/LOG.md`.
 
 @~/docs/ui-rulebook/RULEBOOK.md
-
-## Hvor ting ligger
-- `server/`: telefonserveren (Java 8-syntaks, ingen biblioteker). `DisplayCapture.java` (skærm), `InputInjector.java` (input og udklipsholder) og `AudioCapture.java` (lyd) er de eneste steder med skjulte Android-API'er. `Controller.java` laver appens styringsbeskeder om til input. `AudioStreamer.java` sender lyden, og `AudioTiming.java` giver den PTS på billedets ur.
-- `docs/PROTOCOL.md` og `protocol/vectors.txt`: protokollen mellem server og app, og testvektorerne, som både Java- og Rust-testene bruger.
-- `src-tauri/src/protocol.rs`: appens side af protokollen.
-- `src-tauri/src/mirror.rs`: én session med adb push, reverse-tunnel, start af serveren og videostrømmen til web-UI'et. Beskedformatet til web-UI'et deles med `src/player.ts`.
-- `src-tauri/src/appearance.rs`: vælger skin. Glas på Windows 11 build 22621+ med gennemsigtighed slået til, ellers solid.
-- `src/player.ts`: afkodning med WebCodecs og tegning på canvas; det nyeste billede vinder.
-- `src/audio.ts`: afspiller lyden med Web Audio: blokke planlagt lidt fremme, en buffer, der vokser ved underløb, og måling af lyd mod billede.
-- `src/control.ts`: mus, touch, hjul og tastatur på skærmen bliver til styringsbeskeder, som Rust koder i `protocol.rs`.
-- `src/styles/tokens.css`: alle designværdier i tre lag (TOK-01, TOK-02). `src/styles/app.css` bruger kun lag 2 og 3.
-- `src/strings.ts`: al tekst i UI'et.
-- `docs/DESIGN-BRIEF.md`: stil, tokens, risici og afvigelser.
-
-## Kommandoer
-- `npm run tauri dev`: kør appen. Den bygger også telefonserveren.
-- `npm run build:server`: serverens protokoltests og byg; kræver JDK 17+ og Android SDK.
-- `npm run build` og `npm run check:contrast`.
-- I `src-tauri`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` og `cargo test`.
-- Røgtest på en tilsluttet, låst op enhed: `$env:STORMCAST_SMOKE = "1"; npm run tauri dev`. Den trykker Seneste apps og Tilbage, lytter efter en testtone fra enheden og skriver `STORMCAST_SMOKE_RESULT` med tiden fra input til billede og lydens forskydning mod billedet.
-- `$env:STORMCAST_SKIN = "solid"` eller `"glass"` tvinger et skin.
+Følg projects: @~/docs/projects/PROJECTS.md
+@docs/BRAIN.md
 
 ## Regler
 - En protokolændring ændrer `docs/PROTOCOL.md`, `protocol/vectors.txt`, Java og Rust i samme commit, og testene i begge ender skal være grønne.
