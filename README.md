@@ -72,14 +72,15 @@ Set `$env:STORMCAST_SKIN` to `"glass"` or `"solid"` to try either design on any 
 
 ## Releases
 
-Push a tag that matches the version in `package.json`:
+1. Describe the version for users in its own section of [CHANGELOG.md](CHANGELOG.md). The release notes come from there, and a release without a section stops before it builds.
+2. Push a tag that matches the version in `package.json`:
 
 ```powershell
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The [Release workflow](.github/workflows/release.yml) builds the installer and the portable zip, writes `SHA256SUMS.txt`, attests the build and publishes a GitHub release. Run it by hand (Actions → Release → Run workflow) to build the files without publishing.
+The [Release workflow](.github/workflows/release.yml) builds the installer and the portable zip, writes `SHA256SUMS.txt`, attests the build and publishes a GitHub release with the changelog section as notes. Run it by hand (Actions → Release → Run workflow) to build the files without publishing.
 
 ## License
 

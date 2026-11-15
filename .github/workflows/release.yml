@@ -55,6 +55,11 @@ jobs:
             Write-Error "Tag $env:GITHUB_REF_NAME does not match version $version in package.json"
             exit 1
           }
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            # Stop before building if CHANGELOG.md has no notes for this version.
+            node scripts/release-notes.mjs $version > $null
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - run: npm ci
@@ -107,10 +112,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: release
           merge-multiple: true
+
+      - name: Release notes from CHANGELOG.md
+        run: node scripts/release-notes.mjs "${{ needs.build.outputs.version }}" > notes.md
 
       - name: Create the release
         env:
@@ -119,5 +129,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" release/*
           --repo "$GITHUB_REPOSITORY"
           --title "Stormcast ${{ needs.build.outputs.version }}"
-          --generate-notes
+          --notes-file notes.md
           --verify-tag

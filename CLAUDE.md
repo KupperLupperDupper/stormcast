@@ -30,4 +30,4 @@ Windows-app, der spejler en Android-skærm over USB. Tauri 2: Rust i `src-tauri/
 - Serveren slår aldrig B-frames til. Appen fortæller decoderen, at der ingen reordering er (`h264.rs`), ellers holder decoderen billeder tilbage.
 - App-ID og Java-pakke er `com.stormitron.stormcast`; udgiveren er Stormitron.
 - Telefonbilledet må aldrig ligge under glas eller andre lag.
-- Release: tagget `vX.Y.Z` skal matche `version` i `package.json`.
+- Release: skriv versionens afsnit i `CHANGELOG.md` til brugerne (release-noterne kommer derfra), og tagget `vX.Y.Z` skal matche `version` i `package.json`.
