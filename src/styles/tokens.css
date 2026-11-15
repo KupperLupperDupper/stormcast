@@ -218,6 +218,10 @@
 
   --icon-size: var(--p-size-20);
 
+  /* A toggle that is on (aria-pressed): the fill and border of a selection. */
+  --toggle-on-bg: var(--color-selected);
+  --toggle-on-border: var(--color-accent);
+
   --tooltip-bg: var(--color-surface-solid);
   /* As far as the button's hit area reaches, so the pointer can move onto the tooltip (A11Y-05). */
   --tooltip-gap: var(--button-hit-extend);

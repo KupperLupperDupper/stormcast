@@ -18,11 +18,11 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <pre>
  * CLASSPATH=/data/local/tmp/stormcast-server.jar app_process / \
- *     com.stormitron.stormcast.server.Server 2 socket=stormcast_0123abcd
+ *     com.stormitron.stormcast.server.Server 3 socket=stormcast_0123abcd audio=1
  * </pre>
  *
- * It connects to the app through the adb reverse tunnel, streams the screen as H.264 and
- * injects the app's input, with the protocol in docs/PROTOCOL.md.
+ * It connects to the app through the adb reverse tunnel, streams the screen as H.264 and what the
+ * device plays as PCM, and injects the app's input, with the protocol in docs/PROTOCOL.md.
  */
 public final class Server {
     public static final String VERSION = "0.1.0";
@@ -61,7 +61,8 @@ public final class Server {
             writer.writeHello(deviceName(), "h264", VERSION, Build.VERSION.RELEASE, Build.VERSION.SDK_INT);
             writer.flush();
             AtomicReference<Geometry> geometry = new AtomicReference<>();
-            Controller.start(socket.getInputStream(), writer, geometry);
+            AudioStreamer audio = AudioStreamer.start(writer, options.audio, options.tone);
+            Controller.start(socket.getInputStream(), writer, geometry, audio);
             try {
                 new ScreenStreamer(options, writer, geometry).run();
                 return 0;

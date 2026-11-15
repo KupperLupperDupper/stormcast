@@ -2,7 +2,7 @@
 
 Stormcast mirrors the screen of an Android device to a Windows PC over USB, and lets you control the device from the PC.
 
-> **Status: early.** Stormcast shows and controls the screen. Audio and wireless connections are planned.
+> **Status: early.** Stormcast shows and controls the screen and plays the device's sound. Wireless connections are planned.
 
 ## Install
 
@@ -32,11 +32,15 @@ While mirroring, click or tap the screen to control the device:
 - Copy and paste work both ways: text you copy on the device lands on the PC's clipboard, and Ctrl+V on the screen pastes the PC's clipboard on the device. Text only, up to 256 KiB.
 - Back, Home, Recent apps and Power are buttons in the toolbar. Power turns the screen on or off.
 
+## Sound
+
+The device's sound plays on the PC while you mirror, and the device itself is silent meanwhile. The speaker button in the toolbar turns sound on this PC off and gives it back to the device; Stormcast remembers the choice. Sound needs Android 12 or newer.
+
 ## How it works
 
 1. Stormcast carries a small server for the phone (`server/`). When you start mirroring, it copies the server to the device with `adb` and starts it.
-2. The server mirrors the screen into the device's hardware video encoder and sends H.264 back over the USB cable, using [Stormcast's own protocol](docs/PROTOCOL.md).
-3. Stormcast decodes the video on the graphics card with WebCodecs and shows it.
+2. The server mirrors the screen into the device's hardware video encoder and sends H.264 back over the USB cable, using [Stormcast's own protocol](docs/PROTOCOL.md). It captures what the device plays and sends it as uncompressed PCM, which costs less than 2 Mbit/s and adds no encoding delay.
+3. Stormcast decodes the video on the graphics card with WebCodecs and shows it, and plays the sound with Web Audio, a few tens of milliseconds ahead, on the same clock as the picture.
 4. Your input goes the other way on the same connection, and the server injects it on the device.
 
 Nothing is installed on the device, and the server deletes its file as soon as it starts.

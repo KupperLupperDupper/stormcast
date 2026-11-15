@@ -299,6 +299,26 @@ ol {
   padding: 0;
 }
 
+/* A toggle that is on. Its icon changes too, so colour is not the only sign (COL-03). */
+.button[aria-pressed="true"] {
+  --button-bg: var(--toggle-on-bg);
+  --button-border: var(--toggle-on-border);
+}
+
+/* Not available: it keeps its place and its focus, so its tooltip can say why (CMP-01). */
+.button[aria-disabled="true"] {
+  --button-fg: var(--color-text-muted);
+  cursor: default;
+}
+
+.button[aria-disabled="true"]:hover {
+  background-image: none;
+}
+
+.button[aria-disabled="true"]:active {
+  transform: none;
+}
+
 .icon {
   flex: none;
   width: var(--icon-size);

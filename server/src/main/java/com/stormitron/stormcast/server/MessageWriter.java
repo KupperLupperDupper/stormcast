@@ -7,12 +7,13 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Writes the stream to the app: the preamble, then messages of [u8 type][u32 length][payload].
- * Integers are big-endian. Each message is written whole, also when the clipboard watcher writes
- * from another thread than the streamer. Plain Java: tested on the JVM against
+ * Integers are big-endian. Each message is written whole, also when the clipboard watcher and the
+ * audio streamer write from other threads than the screen streamer. Plain Java: tested on the JVM against
  * protocol/vectors.txt.
  */
 final class MessageWriter {
     private static final int FRAME_PREFIX = 9; // flags + pts
+    private static final int AUDIO_PREFIX = 8; // pts
 
     private final DataOutputStream out;
 
@@ -62,6 +63,24 @@ final class MessageWriter {
 
     synchronized void writeClipboard(byte[] utf8) throws IOException {
         writeMessage(Protocol.TYPE_CLIPBOARD, utf8);
+    }
+
+    synchronized void writeAudioConfig(int codec, int sampleRate, int channels) throws IOException {
+        header(Protocol.TYPE_AUDIO_CONFIG, 6);
+        out.writeByte(codec);
+        out.writeInt(sampleRate);
+        out.writeByte(channels);
+    }
+
+    synchronized void writeAudio(long ptsUs, byte[] data, int offset, int length) throws IOException {
+        header(Protocol.TYPE_AUDIO, AUDIO_PREFIX + length);
+        out.writeLong(ptsUs);
+        out.write(data, offset, length);
+    }
+
+    synchronized void writeAudioOff(int reason) throws IOException {
+        header(Protocol.TYPE_AUDIO_OFF, 1);
+        out.writeByte(reason);
     }
 
     synchronized void flush() throws IOException {

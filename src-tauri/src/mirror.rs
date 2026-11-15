@@ -1,6 +1,6 @@
 //! One mirroring session: push our server to the device, open the adb tunnel, start the
-//! server, forward its video to the web view over a Tauri channel, and send the web view's
-//! control messages back on the same connection.
+//! server, forward its video and audio to the web view over a Tauri channel, and send the web
+//! view's control messages back on the same connection.
 
 use crate::adb::Adb;
 use crate::error::AppError;
@@ -35,6 +35,29 @@ const MSG_SESSION: u8 = 1;
 const MSG_CONFIG: u8 = 2;
 const MSG_FRAME: u8 = 3;
 const MSG_END: u8 = 4;
+const MSG_AUDIO_CONFIG: u8 = 5;
+const MSG_AUDIO: u8 = 6;
+const MSG_AUDIO_OFF: u8 = 7;
+
+/// How the server starts.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ServerOptions {
+    /// Capture audio from the start.
+    pub audio: bool,
+    /// Play a test tone on the device once audio capture runs (the smoke test).
+    pub tone: bool,
+}
+
+impl ServerOptions {
+    /// `key=value` arguments for the server (docs/PROTOCOL.md).
+    fn args(self) -> Vec<String> {
+        let mut args = vec![format!("audio={}", u8::from(self.audio))];
+        if self.tone {
+            args.push("tone=1".into());
+        }
+        args
+    }
+}
 
 /// The running session, if any. One device is mirrored at a time.
 #[derive(Default)]
@@ -46,7 +69,13 @@ pub struct MirrorState {
 impl MirrorState {
     /// Starts a session in the background. Progress, errors and the end of the stream are
     /// reported on the channel, so the UI can cancel at any time.
-    pub async fn start(&self, app: AppHandle, serial: String, channel: Channel<Response>) {
+    pub async fn start(
+        &self,
+        app: AppHandle,
+        serial: String,
+        options: ServerOptions,
+        channel: Channel<Response>,
+    ) {
         let mut task = self.task.lock().await;
         if let Some(previous) = task.take() {
             previous.abort();
@@ -56,6 +85,7 @@ impl MirrorState {
         *task = Some(tokio::spawn(run(
             app,
             serial,
+            options,
             channel,
             self.control.clone(),
         )));
@@ -114,8 +144,14 @@ impl ControlLink {
     }
 }
 
-async fn run(app: AppHandle, serial: String, channel: Channel<Response>, control: ControlLink) {
-    let result = mirror(&app, &serial, &channel, &control).await;
+async fn run(
+    app: AppHandle,
+    serial: String,
+    options: ServerOptions,
+    channel: Channel<Response>,
+    control: ControlLink,
+) {
+    let result = mirror(&app, &serial, options, &channel, &control).await;
     control.detach().await;
     let (code, detail) = match result {
         Ok(()) => (
@@ -132,12 +168,13 @@ async fn run(app: AppHandle, serial: String, channel: Channel<Response>, control
 async fn mirror(
     app: &AppHandle,
     serial: &str,
+    options: ServerOptions,
     channel: &Channel<Response>,
     control: &ControlLink,
 ) -> Result<(), AppError> {
     let adb = Adb::locate(app)?;
     let server = server_path(app)?;
-    let session = connect(&adb, serial, &server).await?;
+    let session = connect(&adb, serial, &server, options).await?;
     log::info!(
         "mirroring {serial}: {} (server {})",
         session.hello.device,
@@ -157,7 +194,12 @@ struct Session {
     _server: Child,
 }
 
-async fn connect(adb: &Adb, serial: &str, server: &Path) -> Result<Session, AppError> {
+async fn connect(
+    adb: &Adb,
+    serial: &str,
+    server: &Path,
+    options: ServerOptions,
+) -> Result<Session, AppError> {
     let server_file = server.to_string_lossy();
     adb.run(&["-s", serial, "push", &server_file, DEVICE_SERVER_PATH])
         .await?;
@@ -185,7 +227,8 @@ async fn connect(adb: &Adb, serial: &str, server: &Path) -> Result<Session, AppE
     let class_path = format!("CLASSPATH={DEVICE_SERVER_PATH}");
     let version = protocol::VERSION.to_string();
     let socket_arg = format!("socket={socket_name}");
-    let mut server = adb.spawn(&[
+    let option_args = options.args();
+    let mut args = vec![
         "-s",
         serial,
         "shell",
@@ -195,7 +238,9 @@ async fn connect(adb: &Adb, serial: &str, server: &Path) -> Result<Session, AppE
         SERVER_CLASS,
         &version,
         &socket_arg,
-    ])?;
+    ];
+    args.extend(option_args.iter().map(String::as_str));
+    let mut server = adb.spawn(&args)?;
     let server_log = ServerLog::attach(&mut server);
 
     let accepted = tokio::select! {
@@ -288,6 +333,24 @@ async fn forward(
             }
             protocol::TYPE_FRAME => {
                 send(channel, frame_message(&protocol::parse_frame(&payload)?))?;
+            }
+            protocol::TYPE_AUDIO_CONFIG => {
+                send(
+                    channel,
+                    audio_config_message(&protocol::parse_audio_config(&payload)?),
+                )?;
+            }
+            protocol::TYPE_AUDIO => {
+                protocol::parse_audio(&payload)?;
+                send(channel, message(MSG_AUDIO, &payload))?;
+            }
+            protocol::TYPE_AUDIO_OFF => {
+                let reason = protocol::parse_audio_off(&payload)?;
+                log::info!(
+                    "audio stopped on the device: {}",
+                    protocol::audio_off_reason(reason)
+                );
+                send(channel, message(MSG_AUDIO_OFF, &[reason]))?;
             }
             protocol::TYPE_ERROR => return Err(protocol::parse_error(&payload).into()),
             protocol::TYPE_CLIPBOARD => {
@@ -418,6 +481,28 @@ fn frame_message(frame: &protocol::Frame<'_>) -> Vec<u8> {
     msg.push(u8::from(frame.key_frame));
     msg.extend_from_slice(&frame.pts.to_be_bytes());
     msg.extend_from_slice(frame.data);
+    msg
+}
+
+/// `[tag][u32 sample rate][u8 channels]` for PCM the web view can play, otherwise audio off:
+/// the server and the app ship together, so another format is a bug.
+fn audio_config_message(config: &protocol::AudioConfig) -> Vec<u8> {
+    let playable = config.codec == protocol::AUDIO_CODEC_PCM_S16LE
+        && config.sample_rate > 0
+        && (1..=2).contains(&config.channels);
+    if !playable {
+        log::warn!("the device sends audio the app cannot play: {config:?}");
+        return message(MSG_AUDIO_OFF, &[protocol::AUDIO_OFF_FAILED]);
+    }
+    log::info!(
+        "audio {} Hz, {} channels",
+        config.sample_rate,
+        config.channels
+    );
+    let mut msg = Vec::with_capacity(6);
+    msg.push(MSG_AUDIO_CONFIG);
+    msg.extend_from_slice(&config.sample_rate.to_be_bytes());
+    msg.push(config.channels);
     msg
 }
 
@@ -573,6 +658,36 @@ mod tests {
                 MSG_FRAME, 1, 0, 0, 0, 0, 0, 0x12, 0xd6, 0x87, 0, 0, 0, 1, 0x65
             ]
         );
+    }
+
+    #[test]
+    fn audio_config_message_carries_rate_and_channels() {
+        let pcm = |sample_rate, channels| protocol::AudioConfig {
+            codec: protocol::AUDIO_CODEC_PCM_S16LE,
+            sample_rate,
+            channels,
+        };
+        assert_eq!(
+            audio_config_message(&pcm(48_000, 2)),
+            vec![MSG_AUDIO_CONFIG, 0, 0, 0xbb, 0x80, 2]
+        );
+        let unplayable = vec![MSG_AUDIO_OFF, protocol::AUDIO_OFF_FAILED];
+        assert_eq!(audio_config_message(&pcm(48_000, 6)), unplayable);
+        let opus = protocol::AudioConfig {
+            codec: 1,
+            ..pcm(48_000, 2)
+        };
+        assert_eq!(audio_config_message(&opus), unplayable);
+    }
+
+    #[test]
+    fn server_options_become_arguments() {
+        assert_eq!(ServerOptions::default().args(), ["audio=0"]);
+        let smoke = ServerOptions {
+            audio: true,
+            tone: true,
+        };
+        assert_eq!(smoke.args(), ["audio=1", "tone=1"]);
     }
 
     #[test]

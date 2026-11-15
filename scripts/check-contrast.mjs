@@ -70,6 +70,7 @@ const pairs = [
   ["--color-focus", "--color-bg", 3, "focus ring on background"],
   ["--color-focus", "--color-surface", 3, "focus ring on panel"],
   ["--mirror-control-ring", "--color-bg", 3, "control ring around the screen"],
+  ["--toggle-on-border", "--color-surface", 3, "border of a toggle that is on"],
   ["--color-text", "--color-surface-solid", 4.5, "tooltip text"],
 ];
 

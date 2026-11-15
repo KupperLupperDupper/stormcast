@@ -8,7 +8,7 @@
 use crate::error::AppError;
 use serde::Deserialize;
 
-pub const VERSION: u8 = 2;
+pub const VERSION: u8 = 3;
 pub const PREAMBLE_LEN: usize = 5;
 pub const HEADER_LEN: usize = 5;
 const MAGIC: &[u8; 4] = b"STRM";
@@ -22,10 +22,23 @@ pub const TYPE_CONFIG: u8 = 3;
 pub const TYPE_FRAME: u8 = 4;
 pub const TYPE_ERROR: u8 = 5;
 pub const TYPE_CLIPBOARD: u8 = 6;
+pub const TYPE_AUDIO_CONFIG: u8 = 7;
+pub const TYPE_AUDIO: u8 = 8;
+pub const TYPE_AUDIO_OFF: u8 = 9;
+
+/// Audio codec: PCM, 16-bit signed little-endian, channels interleaved.
+pub const AUDIO_CODEC_PCM_S16LE: u8 = 0;
+// Why audio stopped (audio off).
+const AUDIO_OFF_STOPPED: u8 = 0;
+const AUDIO_OFF_UNSUPPORTED: u8 = 1;
+const AUDIO_OFF_REFUSED: u8 = 2;
+pub const AUDIO_OFF_FAILED: u8 = 3;
 
 /// Flags and PTS in front of a frame's data.
 const FRAME_PREFIX_LEN: usize = 9;
 const FLAG_KEY_FRAME: u8 = 1;
+/// PTS in front of a block of audio.
+const AUDIO_PREFIX_LEN: usize = 8;
 
 // From the app to the phone.
 const TYPE_TOUCH: u8 = 16;
@@ -34,6 +47,7 @@ const TYPE_TEXT: u8 = 18;
 const TYPE_BUTTON: u8 = 19;
 const TYPE_SCROLL: u8 = 20;
 const TYPE_SET_CLIPBOARD: u8 = 21;
+const TYPE_SET_AUDIO: u8 = 22;
 /// Clipboard text in either direction, in UTF-8 bytes.
 pub const MAX_CLIPBOARD: usize = 256 * 1024;
 /// The server refuses larger control messages.
@@ -131,6 +145,63 @@ pub fn parse_frame(payload: &[u8]) -> Result<Frame<'_>, AppError> {
     })
 }
 
+/// Audio capture started with this format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioConfig {
+    pub codec: u8,
+    pub sample_rate: u32,
+    pub channels: u8,
+}
+
+pub fn parse_audio_config(payload: &[u8]) -> Result<AudioConfig, AppError> {
+    if payload.len() < 6 {
+        return Err(too_short("audio config"));
+    }
+    Ok(AudioConfig {
+        codec: payload[0],
+        sample_rate: be32(&payload[1..5]),
+        channels: payload[5],
+    })
+}
+
+/// A block of audio: presentation time in microseconds, on the clock of the frames' PTS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Audio<'a> {
+    pub pts: u64,
+    pub data: &'a [u8],
+}
+
+pub fn parse_audio(payload: &[u8]) -> Result<Audio<'_>, AppError> {
+    if payload.len() < AUDIO_PREFIX_LEN {
+        return Err(too_short("audio"));
+    }
+    let mut pts = [0u8; 8];
+    pts.copy_from_slice(&payload[..AUDIO_PREFIX_LEN]);
+    Ok(Audio {
+        pts: u64::from_be_bytes(pts),
+        data: &payload[AUDIO_PREFIX_LEN..],
+    })
+}
+
+/// Why audio capture stopped: one of the `AUDIO_OFF_*` reasons.
+pub fn parse_audio_off(payload: &[u8]) -> Result<u8, AppError> {
+    payload
+        .first()
+        .copied()
+        .ok_or_else(|| too_short("audio off"))
+}
+
+/// An audio off reason in words, for the log.
+pub fn audio_off_reason(reason: u8) -> &'static str {
+    match reason {
+        AUDIO_OFF_STOPPED => "the app turned it off",
+        AUDIO_OFF_UNSUPPORTED => "the device's Android is older than 12",
+        AUDIO_OFF_REFUSED => "the device did not allow capture",
+        AUDIO_OFF_FAILED => "capture failed",
+        _ => "an unknown reason",
+    }
+}
+
 /// The server's last message before it stops.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ServerError {
@@ -205,6 +276,10 @@ pub enum Control {
     /// Ctrl+V in the web view: the app turns it into `SetClipboard` with the PC's text before
     /// sending, because only the app can read the PC's clipboard.
     Paste,
+    /// Starts or stops audio capture on the device.
+    Audio {
+        on: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -301,6 +376,10 @@ impl Control {
                 put_header(out, TYPE_SET_CLIPBOARD, 1 + text.len());
                 out.push(u8::from(*paste));
                 out.extend_from_slice(text.as_bytes());
+            }
+            Self::Audio { on } => {
+                put_header(out, TYPE_SET_AUDIO, 1);
+                out.push(u8::from(*on));
             }
             Self::Paste => {
                 return Err(AppError::new(
@@ -466,10 +545,45 @@ mod tests {
     }
 
     #[test]
+    fn decodes_audio() {
+        let (header, payload) = message("audio_config");
+        assert_eq!(header.kind, TYPE_AUDIO_CONFIG);
+        assert_eq!(
+            parse_audio_config(&payload).unwrap(),
+            AudioConfig {
+                codec: AUDIO_CODEC_PCM_S16LE,
+                sample_rate: 48_000,
+                channels: 2
+            }
+        );
+        let (header, payload) = message("audio");
+        assert_eq!(header.kind, TYPE_AUDIO);
+        let audio = parse_audio(&payload).unwrap();
+        assert_eq!(audio.pts, 1_234_600);
+        let samples: Vec<i16> = audio
+            .data
+            .chunks(2)
+            .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        assert_eq!(samples, [1, -1, i16::MIN, i16::MAX]);
+        let (header, payload) = message("audio_off");
+        assert_eq!(header.kind, TYPE_AUDIO_OFF);
+        assert_eq!(parse_audio_off(&payload).unwrap(), AUDIO_OFF_UNSUPPORTED);
+        assert_eq!(
+            audio_off_reason(AUDIO_OFF_UNSUPPORTED),
+            "the device's Android is older than 12"
+        );
+        assert_eq!(audio_off_reason(99), "an unknown reason");
+    }
+
+    #[test]
     fn refuses_oversized_and_short_messages() {
         assert!(parse_header(&[TYPE_FRAME, 0xff, 0xff, 0xff, 0xff]).is_err());
         assert!(parse_session(&[0; 8]).is_err());
         assert!(parse_frame(&[0; 8]).is_err());
+        assert!(parse_audio_config(&[0; 5]).is_err());
+        assert!(parse_audio(&[0; 7]).is_err());
+        assert!(parse_audio_off(&[]).is_err());
     }
 
     #[test]
@@ -525,6 +639,8 @@ mod tests {
                     paste: true,
                 },
             ),
+            ("set_audio_on", Control::Audio { on: true }),
+            ("set_audio_off", Control::Audio { on: false }),
             (
                 "scroll",
                 Control::Scroll {
@@ -551,7 +667,8 @@ mod tests {
             {"type":"key","action":"up","keycode":66,"repeat":0,"metaState":4096},
             {"type":"text","text":"æøå"},
             {"type":"button","button":"recentApps"},
-            {"type":"scroll","x":1,"y":2,"width":1200,"height":1920,"hScroll":0,"vScroll":-1}
+            {"type":"scroll","x":1,"y":2,"width":1200,"height":1920,"hScroll":0,"vScroll":-1},
+            {"type":"audio","on":false}
         ]"#;
         let messages: Vec<Control> = serde_json::from_str(json).unwrap();
         assert_eq!(
@@ -586,6 +703,7 @@ mod tests {
                     h_scroll: 0.0,
                     v_scroll: -1.0
                 },
+                Control::Audio { on: false },
             ]
         );
     }

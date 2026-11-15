@@ -4,6 +4,10 @@ All notable changes to Stormcast are listed here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- Hear the device's sound on the PC while mirroring, with little delay and in step with the picture. Meanwhile the device itself is silent. The speaker button in the toolbar gives the sound back to the device, and Stormcast remembers the choice. Sound needs Android 12 or newer; on older devices Stormcast says so and mirrors without sound.
+
 ## [0.1.0] - 2026-11-15
 
 The first release: see and control an Android device from a Windows PC over a USB cable.

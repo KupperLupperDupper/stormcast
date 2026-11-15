@@ -1,4 +1,4 @@
-# Stormcast protocol, version 2
+# Stormcast protocol, version 3
 
 How the phone-side server (`server/`) and the Windows app (`src-tauri/`) talk. Both sides test against [`protocol/vectors.txt`](../protocol/vectors.txt). Change the protocol, the vectors and both implementations in the same commit, and raise the version when an old and a new side can no longer talk.
 
@@ -8,7 +8,7 @@ The app copies `stormcast-server.jar` to `/data/local/tmp/` and starts it throug
 
 ```
 CLASSPATH=/data/local/tmp/stormcast-server.jar app_process / \
-    com.stormitron.stormcast.server.Server 2 socket=stormcast_0123abcd
+    com.stormitron.stormcast.server.Server 3 socket=stormcast_0123abcd audio=1
 ```
 
 - The first argument is the protocol version. The server exits with code 2 if it is not its own.
@@ -17,6 +17,8 @@ CLASSPATH=/data/local/tmp/stormcast-server.jar app_process / \
   - `max_size`: the long side of the video in pixels; `0`, the default, keeps the display size.
   - `bit_rate`: bits per second, default `8000000`.
   - `max_fps`: `0`, the default, means no limit.
+  - `audio`: `1` starts audio capture at once; `0`, the default, waits for the app's audio message.
+  - `tone`: `1` plays a short test tone on the device about a second after audio capture starts, for the smoke test; default `0`.
 - Unknown options are an error, because the app and the server always ship together.
 - The server deletes its jar as soon as it starts, so nothing is left on the device.
 
@@ -39,12 +41,19 @@ All integers are big-endian. `f32` is an IEEE 754 single. Every message is `u8 t
 | 4 | frame | `u8 flags` (bit 0: key frame), `u64 pts` in microseconds, then the encoded frame in Annex B. Frames come in display order: the server turns B-frames off. |
 | 5 | error | UTF-8 JSON with `code` and `message`. The server stops after sending it. Codes: `display_unavailable`, `encoder_failed`, `server_error`. |
 | 6 | clipboard | UTF-8 text: the device's clipboard changed, for example after Copy. Not sent for text the server put there itself. |
+| 7 | audio config | `u8 codec` (0: PCM, 16-bit signed little-endian, channels interleaved), `u32 sample rate`, `u8 channels`. Audio capture started; comes before its first audio message. |
+| 8 | audio | `u64 pts` in microseconds, then the samples. |
+| 9 | audio off | `u8 reason`: 0 the app turned audio off, 1 the device's Android is older than 12, 2 the device did not allow capture, 3 capture failed. Audio capture stopped. |
 
 A payload is at most 64 MiB; a larger length means a broken stream.
 
+- **Audio** is what the device plays, captured as 48 kHz stereo PCM. While capture runs, the device plays no sound itself; when it stops, the device plays its sound again.
+- **Audio PTS** use the device's monotonic clock, as the frames' PTS do, so the app can measure and keep sound and picture in step. They count the samples and follow the device's audio timestamps slowly, because those jump when playback on the device starts or stops; after a pause in capture they jump ahead. They always increase.
+- After an audio off with reason 1 to 3, capture stays off until the app turns it off and on again, which tries again.
+
 ## Control from the app
 
-No preamble: the version was checked when the server started. The server injects the messages as input on the main display, in the order they arrive.
+No preamble: the version was checked when the server started. The server injects the messages as input on the main display, in the order they arrive. Audio messages work also when the device does not allow input.
 
 | Type | Name | Payload |
 |---|---|---|
@@ -54,6 +63,7 @@ No preamble: the version was checked when the server started. The server injects
 | 19 | button | `u8 button`: 0 back, 1 home, 2 recent apps, 3 power. One press and release; power turns the screen on or off. |
 | 20 | scroll | `u16 x`, `u16 y`, `u16 width`, `u16 height`, `f32 horizontal`, `f32 vertical`. |
 | 21 | set clipboard | `u8 paste` (0 or 1), then UTF-8 text. Puts the text on the device's clipboard, and with paste 1 also pastes it. |
+| 22 | audio | `u8 on` (0 or 1): starts or stops audio capture. The server answers with audio config or audio off. |
 
 - **Positions** are pixels on the video: `x` and `y` on a video of `width` × `height`, the size in the current session message. The server scales them to the display. A position for another size was made before the display rotated, so the server drops it; an up or cancel then cancels the touch, so no finger stays down.
 - **Touch:** `pointer` is the app's own id for a finger, the mouse or a pen. Up to 10 can be down at once. Cancel ends them all. A down for a pointer that is already down means its up was lost, so the server cancels the old touch before the new one starts.

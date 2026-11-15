@@ -6,7 +6,7 @@ package com.stormitron.stormcast.server;
  */
 final class Protocol {
     static final byte[] MAGIC = {'S', 'T', 'R', 'M'};
-    static final int VERSION = 2;
+    static final int VERSION = 3;
 
     // From the phone to the app.
     static final int TYPE_HELLO = 1;
@@ -15,8 +15,20 @@ final class Protocol {
     static final int TYPE_FRAME = 4;
     static final int TYPE_ERROR = 5;
     static final int TYPE_CLIPBOARD = 6;
+    static final int TYPE_AUDIO_CONFIG = 7;
+    static final int TYPE_AUDIO = 8;
+    static final int TYPE_AUDIO_OFF = 9;
 
     static final int FLAG_KEY_FRAME = 1;
+
+    /** Audio codec: PCM, 16-bit signed little-endian, channels interleaved. */
+    static final int AUDIO_CODEC_PCM_S16LE = 0;
+
+    // Why audio stopped (audio off).
+    static final int AUDIO_OFF_STOPPED = 0;
+    static final int AUDIO_OFF_UNSUPPORTED = 1;
+    static final int AUDIO_OFF_REFUSED = 2;
+    static final int AUDIO_OFF_FAILED = 3;
 
     // From the app to the phone.
     static final int TYPE_TOUCH = 16;
@@ -25,6 +37,7 @@ final class Protocol {
     static final int TYPE_BUTTON = 19;
     static final int TYPE_SCROLL = 20;
     static final int TYPE_SET_CLIPBOARD = 21;
+    static final int TYPE_SET_AUDIO = 22;
 
     /** Clipboard text in either direction, in UTF-8 bytes. */
     static final int MAX_CLIPBOARD = 256 * 1024;

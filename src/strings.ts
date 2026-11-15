@@ -64,6 +64,12 @@ const errors: Record<string, { title: string; body: string }> = {
   },
 };
 
+const soundNotes: Record<string, string> = {
+  unsupported: "No sound on this PC: the device needs Android 12 or newer",
+  refused: "No sound: the device did not allow it. Turn sound off and on to try again.",
+  failed: "The sound stopped. Turn sound off and on to try again.",
+};
+
 export const text = {
   appName: "Stormcast",
   tagline: "Android screen mirroring",
@@ -99,6 +105,10 @@ export const text = {
   home: "Home",
   recentApps: "Recent apps",
   power: "Power",
+  soundOnPc: "Sound on this PC",
+  soundUnsupportedLabel: "Sound on this PC needs Android 12 or newer on the device",
+  /** Shown in the status line, and announced, when the device sends no sound. */
+  soundNote: (state: string): string | null => soundNotes[state] ?? null,
   controlHint: "Click or tap the screen to control the device.",
   controlHintActive: "Keyboard input goes to the device. Press Tab to leave the screen.",
 

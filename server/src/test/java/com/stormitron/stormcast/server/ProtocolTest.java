@@ -24,6 +24,8 @@ public final class ProtocolTest {
             0, 0, 0, 1, 0x68, (byte) 0xee, 0x3c, (byte) 0x80};
     private static final byte[] KEY_FRAME = {0, 0, 0, 1, 0x65, (byte) 0x88};
     private static final byte[] DELTA_FRAME = {0, 0, 0, 1, 0x41, (byte) 0x9a};
+    /** Two stereo frames, little-endian: 1, -1, -32768, 32767. */
+    private static final byte[] SAMPLES = {1, 0, (byte) 0xff, (byte) 0xff, 0, (byte) 0x80, (byte) 0xff, 0x7f};
     private static final String VERSION = String.valueOf(Protocol.VERSION);
 
     private static int failures;
@@ -41,6 +43,9 @@ public final class ProtocolTest {
         encodes(vectors, "frame_delta", w -> w.writeFrame(false, 1_251_234L, DELTA_FRAME, 0, DELTA_FRAME.length));
         encodes(vectors, "error", w -> w.writeError("encoder_failed", "No H.264 encoder\n\"quoted\" é"));
         encodes(vectors, "clipboard", w -> w.writeClipboard("Hej på dig".getBytes(StandardCharsets.UTF_8)));
+        encodes(vectors, "audio_config", w -> w.writeAudioConfig(Protocol.AUDIO_CODEC_PCM_S16LE, 48000, 2));
+        encodes(vectors, "audio", w -> w.writeAudio(1_234_600L, SAMPLES, 0, SAMPLES.length));
+        encodes(vectors, "audio_off", w -> w.writeAudioOff(Protocol.AUDIO_OFF_UNSUPPORTED));
 
         decodes(vectors, "touch_down", "touch down pointer 1 at 600,960 on 1200x1920 pressure 1.0");
         decodes(vectors, "touch_up", "touch up pointer 4294967294 at 1199,0 on 1200x1920 pressure 0.5");
@@ -53,8 +58,11 @@ public final class ProtocolTest {
         decodes(vectors, "button_power", "button power");
         decodes(vectors, "scroll", "scroll at 600,960 on 1200x1920 by 0.25,-1.0");
         decodes(vectors, "set_clipboard", "set clipboard and paste \"Hej på dig\"");
+        decodes(vectors, "set_audio_on", "audio on");
+        decodes(vectors, "set_audio_off", "audio off");
         readsControlStreams(unhex(vectors.get("button_home")));
         tracksFingers();
+        timesAudio();
 
         Geometry geometry = new Geometry(800, 1280, 1200, 1920);
         check("positions scale to the middle of the display pixels",
@@ -75,6 +83,10 @@ public final class ProtocolTest {
         rejects("a missing socket", new String[] {VERSION});
         rejects("an unknown option", new String[] {VERSION, "socket=x", "colour=red"});
         rejects("a negative number", new String[] {VERSION, "socket=x", "max_size=-1"});
+        check("audio and the test tone are off by default", !options.audio && !options.tone);
+        options = Options.parse(new String[] {VERSION, "socket=x", "audio=1", "tone=1"});
+        check("audio and the test tone can be turned on", options.audio && options.tone);
+        rejects("a flag that is not 0 or 1", new String[] {VERSION, "socket=x", "audio=yes"});
 
         check("JSON escapes like JSON.stringify", Json.quote("a\"b\\c\u0001").equals("\"a\\\"b\\\\c\\u0001\""));
 
@@ -150,6 +162,23 @@ public final class ProtocolTest {
             fingers.down(100 + i, 0, 0, 1);
         }
         check("at most " + TouchPointers.MAX + " fingers", fingers.down(200, 0, 0, 1) == TouchPointers.NONE);
+    }
+
+    /** PTS that count frames, follow AudioRecord's timestamps slowly, jump after a pause and never go back. */
+    private static void timesAudio() {
+        AudioTiming timing = new AudioTiming(48000);
+        long none = AudioTiming.NO_TIMESTAMP;
+        check("a first block without a timestamp ends now", timing.next(1024, 0, none, 1_000_000) == 978_667);
+        check("the next block without a timestamp follows it", timing.next(1024, 0, none, 1_021_333) == 1_000_000);
+
+        timing = new AudioTiming(48000);
+        // Frame 1024 was captured at 2 s: the block of frames 0 to 1023 starts 1024 frames earlier.
+        check("a timestamp dates the first block", timing.next(1024, 1024, 2_000_000_000L, 0) == 1_978_667);
+        check("a matching timestamp keeps the count", timing.next(1024, 2048, 2_021_333_333L, 0) == 2_000_000);
+        // This timestamp is 32 ms later than the count: a sixteenth of that moves the PTS.
+        check("a jumpy timestamp moves the PTS slowly", timing.next(1024, 3072, 2_074_666_666L, 0) == 2_023_333);
+        check("a timestamp after a pause jumps ahead", timing.next(1024, 4096, 9_000_000_000L, 0) == 8_978_667);
+        check("PTS never go back", timing.next(1024, 0, 1_000_000_000L, 0) == 8_978_668);
     }
 
     private static void rejects(String what, String[] args) {

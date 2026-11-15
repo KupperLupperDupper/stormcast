@@ -3,7 +3,7 @@
 Projektets valg: stil, tokens, tone og bevidste afvigelser. Reglerne står i UI-rulebooken og gentages ikke her.
 
 - **Rulebook-version:** 1.1.2 (`~/docs/ui-rulebook`)
-- **Senest opdateret:** 14.11.2026
+- **Senest opdateret:** 15.11.2026
 
 ## Brugere og sammenhæng
 - Folk, der vil se eller vise deres Android-skærm på en Windows-PC: udviklere, testere, undervisere og folk, der præsenterer. Sessioner fra få minutter til timer.
@@ -46,6 +46,8 @@ Korte sætninger uden udråbstegn. Knapper siger handlingen: "Mirror screen", "S
 - Telefonbilledet vises i sin egen opløsning, skaleret til pladsen, og intet ligger ovenpå.
 - Knapper er 40 px høje med et trykområde på 48 px (CMP-02).
 - Lav forsinkelse: hardware-afkodning, og det nyeste billede vinder.
+- Lyd: enhedens lyd spilles på PC'en som ukomprimeret PCM, kun få planlagte blokke fremme. Lyden må højst være ca. 45 ms foran billedet og 125 ms bagefter (ITU-R BT.1359, grænsen for at opdage det), og røgtesten måler det ud fra begge sides PTS på enhedens ur. Billedet ventes aldrig af hensyn til lyden, så styringen bliver hurtig.
+- Lydknappen "Sound on this PC" er en vippeknap med fast navn og `aria-pressed`. Højttalerikonet med bølger eller kryds viser tilstanden, så farven ikke er eneste tegn (COL-03). Slået fra spiller enheden selv lyden igen, og valget huskes. Før Android 12 er knappen `aria-disabled`; den kan stadig få fokus, så tooltippen siger hvorfor, og statuslinjen siger det samme med tekst.
 - Styring: mus, touch og pen bliver til touch på enheden, hjulet til scroll og tastaturet til taster og tekst, mens skærmen har fokus. Fokus vises med en accentring uden om billedet og en hjælpetekst, der siger, at Tab forlader skærmen, så tastaturet aldrig fanges (A11Y-03, WCAG 2.1.2). Tab, zoom med Ctrl og Alt+F4 bliver i appen.
 - Input sendes med det samme og i rækkefølge, uden debounce (PERF-05). Skærmen sender alle fingre videre, så enheden selv afgør knib og andre gestus; GES-05's "ignorér ekstra fingre" gælder egne gestus, og skærmen har ingen.
 - Tilbage, Hjem, Seneste apps og Tænd/sluk er ikonknapper i værktøjslinjen med Androids egne symboler (GES-06). Navnet står i `aria-label` og i en tooltip ved hover og tastaturfokus (CMP-14, A11Y-05). Tooltippen har solid flade, så den aldrig er glas på glas, og lægger sig aldrig over telefonbilledet. "Stop mirroring" er tekst, fordi det er Stormcasts egen handling, og et stop-ikon ville ligne Seneste apps.
@@ -60,5 +62,5 @@ Korte sætninger uden udråbstegn. Knapper siger handlingen: "Mirror screen", "S
 
 ## Tjek i projektet (QA-02)
 - CI (`.github/workflows/ci.yml`): typecheck og build, kontrast-tjek, `cargo fmt`, `clippy` og Rust-tests.
-- Rigtig enhed (QA-04): røgtesten med `STORMCAST_SMOKE=1` spejler den første klar enhed, tæller afkodede billeder, trykker Seneste apps og Tilbage og måler tiden fra input til nyt billede.
+- Rigtig enhed (QA-04): røgtesten med `STORMCAST_SMOKE=1` spejler den første klar enhed, tæller afkodede billeder, trykker Seneste apps og Tilbage og måler tiden fra input til nyt billede. Den får også enheden til at spille en testtone, kræver, at tonen når PC'en, og at lyden ligger inden for grænserne for sync.
 - I hånden indtil videre: glaspanelernes kontrast over hvidt og sort skrivebord, skærmlæser (A11Y-08) og 200 % zoom (TYP-02).
