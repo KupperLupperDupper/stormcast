@@ -55,8 +55,29 @@ jobs:
 
       - name: Rust lints
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Rust tests
         working-directory: src-tauri
-        run: cargo test
+        run: cargo test --locked
+
+  # DEP-03: known vulnerabilities in the npm and Cargo lockfiles.
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.23.0 --locked
+
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit

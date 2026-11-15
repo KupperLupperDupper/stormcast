@@ -68,8 +68,9 @@ jobs:
         run: npm run fetch-adb
 
       # beforeBuildCommand builds the phone server (with its tests) and the web UI.
+      # Everything after `--` goes to cargo, so it builds exactly Cargo.lock (DEP-02).
       - name: Build
-        run: npx tauri build --bundles nsis --config src-tauri/tauri.release.conf.json
+        run: npx tauri build --bundles nsis --config src-tauri/tauri.release.conf.json -- --locked
 
       - name: Collect the release files
         shell: pwsh

@@ -8,6 +8,11 @@ All notable changes to Stormcast are listed here. The format follows [Keep a Cha
 
 - Hear the device's sound on the PC while mirroring, with little delay and in step with the picture. Meanwhile the device itself is silent. The speaker button in the toolbar gives the sound back to the device, and Stormcast remembers the choice. Sound needs Android 12 or newer; on older devices Stormcast says so and mirrors without sound.
 
+### Security
+
+- Releases carry a fixed version of adb (Android platform-tools 37.0.1), and the build stops if the download does not match its known checksum.
+- Releases are built from exactly the locked dependency versions, and every change is checked for known vulnerabilities in its dependencies.
+
 ## [0.1.0] - 2026-11-15
 
 The first release: see and control an Android device from a Windows PC over a USB cable.
