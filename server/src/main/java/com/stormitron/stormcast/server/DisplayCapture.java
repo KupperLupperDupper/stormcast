@@ -5,6 +5,9 @@ import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.SystemClock;
+import android.util.DisplayMetrics;
+import android.view.Display;
 import android.view.Surface;
 
 import java.io.Closeable;
@@ -22,6 +25,9 @@ import java.lang.reflect.Method;
 final class DisplayCapture {
     private static final int MAIN_DISPLAY = 0;
     private static final String NAME = "stormcast";
+    /** A new display turns on within tens of milliseconds; after this, give up asking for a frame. */
+    private static final long DISPLAY_ON_TIMEOUT_MS = 2000;
+    private static final long DISPLAY_ON_POLL_MS = 5;
 
     /** The main display's size (already rotated), rotation and layer stack. */
     static final class Info {
@@ -83,7 +89,11 @@ final class DisplayCapture {
             final VirtualDisplay display = (VirtualDisplay) create.invoke(null, NAME, width, height, MAIN_DISPLAY, surface);
             if (display != null) {
                 Ln.i("Capture: DisplayManager mirror");
-                return display::release;
+                final Thread firstFrame = requestFirstFrame(display, width, height);
+                return () -> {
+                    firstFrame.interrupt();
+                    display.release();
+                };
             }
             displayManagerError = new IllegalStateException("createVirtualDisplay returned null");
         } catch (ReflectiveOperationException | RuntimeException e) {
@@ -95,6 +105,40 @@ final class DisplayCapture {
             throw new StreamerException("display_unavailable", "Could not mirror the display. DisplayManager: "
                     + displayManagerError + ". SurfaceControl: " + e, e);
         }
+    }
+
+    /**
+     * SurfaceFlinger draws a new mirror only when something on the screen changes, so on a still
+     * screen the first frame can take a minute (seen on Android 16). Once the display is on, a new
+     * density, which a mirror does not use, makes the window manager update the mirror, and
+     * SurfaceFlinger draws it at once. If this does not work, the first frame comes with the next
+     * change on the screen, as before.
+     */
+    @SuppressWarnings("deprecation") // Display.getMetrics: its replacement needs a context, which the server lacks.
+    private static Thread requestFirstFrame(final VirtualDisplay display, final int width, final int height) {
+        Thread thread = new Thread(() -> {
+            try {
+                Display mirror = display.getDisplay();
+                long deadline = SystemClock.uptimeMillis() + DISPLAY_ON_TIMEOUT_MS;
+                while (mirror.getState() != Display.STATE_ON) {
+                    if (SystemClock.uptimeMillis() >= deadline) {
+                        Ln.w("The mirror display did not turn on; the first frame waits for a change on the screen");
+                        return;
+                    }
+                    Thread.sleep(DISPLAY_ON_POLL_MS);
+                }
+                DisplayMetrics metrics = new DisplayMetrics();
+                mirror.getMetrics(metrics);
+                display.resize(width, height, metrics.densityDpi + 1);
+            } catch (InterruptedException e) {
+                // The session ended first.
+            } catch (RuntimeException e) {
+                Ln.w("Could not ask for the first frame: " + e);
+            }
+        }, "stormcast-first-frame");
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
     }
 
     private static Closeable surfaceControlMirror(Info info, int width, int height, Surface surface)
