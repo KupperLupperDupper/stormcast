@@ -1,66 +1,66 @@
-# Design-brief: Stormcast
+# Design brief: Stormcast
 
-Projektets valg: stil, tokens, tone og bevidste afvigelser. Reglerne står i UI-rulebooken og gentages ikke her.
+The project's choices: style, tokens, tone and deliberate deviations. The rules are in the UI rulebook and are not repeated here.
 
-- **Rulebook-version:** 1.1.2 (`~/docs/ui-rulebook`)
-- **Senest opdateret:** 15.11.2026
+- **Rulebook version:** 1.1.2 (`~/docs/ui-rulebook`)
+- **Last updated:** 15.11.2026
 
-## Brugere og sammenhæng
-- Folk, der vil se eller vise deres Android-skærm på en Windows-PC: udviklere, testere, undervisere og folk, der præsenterer. Sessioner fra få minutter til timer.
-- Skærme: bærbar og stationær PC fra 1366 × 768 til 4K og 100–200 % skalering. Vinduet står ofte lille ved siden af andre vinduer.
-- Input: mus og tastatur, og touch på Windows-tablets og 2-i-1.
-- Sprog: engelsk UI, fordi projektet er public. Al tekst ligger i `src/strings.ts`.
+## Users and context
+- People who want to see or show their Android screen on a Windows PC: developers, testers, teachers and presenters. Sessions from a few minutes to hours.
+- Screens: laptop and desktop PC from 1366 × 768 to 4K and 100–200 % scaling. The window is often small, next to other windows.
+- Input: mouse and keyboard, and touch on Windows tablets and 2-in-1s.
+- Language: English UI, because the project is public. All text is in `src/strings.ts`.
 
-## Stil (STY-02)
-- **Primær stil:** Glassmorphism, bygget på Fluent-materialet Acrylic (Windows 11, build 22621+).
-- **Fallback-skin:** Fluent solid (Flat 2.0) på Windows 10, og når gennemsigtighedseffekter er slået fra. Samme layout, komponenter og regler; kun tokens skifter (STY-01).
-- **Hvorfor:** Ønsket er et moderne glasudtryk, og Windows 11 har det som systemmateriale. Glas passer til navigation og kontrolflader omkring medier (stilkataloget), og telefonbilledet er netop medie.
-- **Stilens risici og vores afhjælpning:**
-  - Kontrasten svinger med baggrunden → paneler med tekst har 62 % fyld, og kontrasten måles i hånden over et hvidt og et sort skrivebord.
-  - Tekst → står altid på et panel, aldrig direkte på glasset.
-  - Glas på glas → aldrig. Blur kommer kun fra vinduets akryl; panelerne har ingen blur af deres egen.
-  - "Reducér gennemsigtighed" → det solide skin. Windows' indstilling læses ved start.
-  - Høj kontrast → systemfarver via `forced-colors`.
-  - Telefonbilledet ligger aldrig under glas eller andre lag.
+## Style (STY-02)
+- **Primary style:** Glassmorphism, built on the Fluent material Acrylic (Windows 11, build 22621+).
+- **Fallback skin:** Fluent solid (Flat 2.0) on Windows 10, and when transparency effects are turned off. Same layout, components and rules; only the tokens change (STY-01).
+- **Why:** The wish is a modern glass look, and Windows 11 has it as a system material. Glass suits navigation and control surfaces around media (the style catalogue), and the phone picture is media.
+- **The style's risks and how we handle them:**
+  - Contrast varies with the background → panels with text have 62 % fill, and contrast is measured by hand over a white and a black desktop.
+  - Text → always sits on a panel, never directly on the glass.
+  - Glass on glass → never. Blur comes only from the window's acrylic; the panels have no blur of their own.
+  - "Reduce transparency" → the solid skin. The Windows setting is read at start.
+  - High contrast → system colours via `forced-colors`.
+  - The phone picture never sits under glass or any other layer.
 
 ## Tokens
-- **Kilde:** `src/styles/tokens.css`. Lag 1 er primitiver, lag 2 semantiske roller og lag 3 komponenter; UI'et bruger kun lag 2 og 3 (TOK-02).
-- **Generering og test for forældede filer:** ingen generering; filen er eneste kilde. `npm run check:contrast` læser den direkte.
+- **Source:** `src/styles/tokens.css`. Layer 1 is primitives, layer 2 semantic roles and layer 3 components; the UI uses only layers 2 and 3 (TOK-02).
+- **Generation and test for stale files:** no generation; the file is the only source. `npm run check:contrast` reads it directly.
 
-| Rolle | Lys | Mørk | Kontrast |
+| Role | Light | Dark | Contrast |
 |---|---|---|---|
-| tekst på baggrund | #1b1b1b på #f3f3f3 | #ffffff på #202020 | 15,5:1 / 16,3:1 |
-| dæmpet tekst på flade | #5d5d5d på #fbfbfb | #c5c5c5 på #2b2b2b | 6,4:1 / 8,2:1 |
-| accent som fyld + on-accent | #ffffff på #005fb8 | #000000 på #60cdff | 6,3:1 / 11,7:1 |
-| fare | #c42b1c på #fbfbfb | #ff99a4 på #2b2b2b | 5,5:1 / 7,0:1 |
+| text on background | #1b1b1b on #f3f3f3 | #ffffff on #202020 | 15.5:1 / 16.3:1 |
+| muted text on surface | #5d5d5d on #fbfbfb | #c5c5c5 on #2b2b2b | 6.4:1 / 8.2:1 |
+| accent as fill + on-accent | #ffffff on #005fb8 | #000000 on #60cdff | 6.3:1 / 11.7:1 |
+| danger | #c42b1c on #fbfbfb | #ff99a4 on #2b2b2b | 5.5:1 / 7.0:1 |
 
-Tallene gælder det solide skin og tjekkes af `npm run check:contrast` i CI (QA-02). Glaspanelerne er halvgennemsigtige og tjekkes i hånden.
+The numbers apply to the solid skin and are checked by `npm run check:contrast` in CI (QA-02). The glass panels are semi-transparent and are checked by hand.
 
-- **Typografi:** Segoe UI Variable (Text og Display) med Segoe UI som fallback. Fluents skala: caption 12/16, body 14/20, subtitle 20/28, title 28/36. Cascadia Mono til kommandoer og tekniske detaljer.
-- **Bevægelsens personlighed:** crisp. Hover og tryk på 100 ms med ease-out; ingen bounce (MOT-03, MOT-08). Fremdriftslinjen er den eneste løkke, og den står stille ved reduceret bevægelse.
+- **Typography:** Segoe UI Variable (Text and Display) with Segoe UI as fallback. Fluent's scale: caption 12/16, body 14/20, subtitle 20/28, title 28/36. Cascadia Mono for commands and technical details.
+- **Motion personality:** crisp. Hover and press at 100 ms with ease-out; no bounce (MOT-03, MOT-08). The progress bar is the only loop, and it stands still with reduced motion.
 
 ## Tone
-Korte sætninger uden udråbstegn. Knapper siger handlingen: "Mirror screen", "Stop mirroring", "Try again". Fejl siger, hvad der skete, og hvad man gør nu.
+Short sentences without exclamation marks. Buttons say the action: "Mirror screen", "Stop mirroring", "Try again". Errors say what happened and what to do now.
 
-## Særlige krav
-- Telefonbilledet vises i sin egen opløsning, skaleret til pladsen, og intet ligger ovenpå.
-- Knapper er 40 px høje med et trykområde på 48 px (CMP-02).
-- Lav forsinkelse: hardware-afkodning, og det nyeste billede vinder.
-- Lyd: enhedens lyd spilles på PC'en som ukomprimeret PCM, kun få planlagte blokke fremme. Lyden må højst være ca. 45 ms foran billedet og 125 ms bagefter (ITU-R BT.1359, grænsen for at opdage det), og røgtesten måler det ud fra begge sides PTS på enhedens ur. Billedet ventes aldrig af hensyn til lyden, så styringen bliver hurtig.
-- Lydknappen "Sound on this PC" er en vippeknap med fast navn og `aria-pressed`. Højttalerikonet med bølger eller kryds viser tilstanden, så farven ikke er eneste tegn (COL-03). Slået fra spiller enheden selv lyden igen, og valget huskes. Før Android 12 er knappen `aria-disabled`; den kan stadig få fokus, så tooltippen siger hvorfor, og statuslinjen siger det samme med tekst.
-- Styring: mus, touch og pen bliver til touch på enheden, hjulet til scroll og tastaturet til taster og tekst, mens skærmen har fokus. Fokus vises med en accentring uden om billedet og en hjælpetekst, der siger, at Tab forlader skærmen, så tastaturet aldrig fanges (A11Y-03, WCAG 2.1.2). Tab, zoom med Ctrl og Alt+F4 bliver i appen.
-- Input sendes med det samme og i rækkefølge, uden debounce (PERF-05). Skærmen sender alle fingre videre, så enheden selv afgør knib og andre gestus; GES-05's "ignorér ekstra fingre" gælder egne gestus, og skærmen har ingen.
-- Tilbage, Hjem, Seneste apps og Tænd/sluk er ikonknapper i værktøjslinjen med Androids egne symboler (GES-06). Navnet står i `aria-label` og i en tooltip ved hover og tastaturfokus (CMP-14, A11Y-05). Tooltippen har solid flade, så den aldrig er glas på glas, og lægger sig aldrig over telefonbilledet. "Stop mirroring" er tekst, fordi det er Stormcasts egen handling, og et stop-ikon ville ligne Seneste apps.
-- Udklipsholder: det, der kopieres på enheden, kommer af sig selv i PC'ens udklipsholder, og Ctrl+V på skærmen indsætter PC'ens tekst på enheden. Kun tekst, og indholdet logges aldrig.
-- Højreklik er Tilbage, som med en mus på Android selv (GES-07). Et museklik på enhedsknapperne flytter ikke fokus fra skærmen, så man kan skrive videre.
+## Special requirements
+- The phone picture is shown at its own resolution, scaled to the space, and nothing lies on top of it.
+- Buttons are 40 px high with a 48 px hit area (CMP-02).
+- Low latency: hardware decoding, and the newest frame wins.
+- Sound: the device's sound plays on the PC as uncompressed PCM, with only a few blocks scheduled ahead. The sound may be at most about 45 ms ahead of the picture and 125 ms behind (ITU-R BT.1359, the detectability threshold), and the smoke test measures it from both sides' PTS on the device's clock. The picture never waits for the sound, so control stays fast.
+- The sound button "Sound on this PC" is a toggle button with a fixed name and `aria-pressed`. The speaker icon with waves or a cross shows the state, so colour is not the only cue (COL-03). Turned off, the device plays its sound itself again, and the choice is remembered. Before Android 12 the button is `aria-disabled`; it can still take focus, so the tooltip says why, and the status bar says the same in text.
+- Control: mouse, touch and pen become touch on the device, the wheel scroll and the keyboard keys and text, while the screen has focus. Focus is shown with an accent ring around the picture and a hint saying that Tab leaves the screen, so the keyboard is never trapped (A11Y-03, WCAG 2.1.2). Tab, Ctrl zoom and Alt+F4 stay in the app.
+- Input is sent at once and in order, without debounce (PERF-05). The screen passes every finger on, so the device itself decides pinches and other gestures; GES-05's "ignore extra fingers" applies to our own gestures, and the screen has none.
+- Back, Home, Recent apps and Power are icon buttons in the toolbar with Android's own symbols (GES-06). The name is in `aria-label` and in a tooltip on hover and keyboard focus (CMP-14, A11Y-05). The tooltip has a solid surface, so it is never glass on glass, and it never covers the phone picture. "Stop mirroring" is text, because it is Stormcast's own action, and a stop icon would look like Recent apps.
+- Clipboard: what is copied on the device lands in the PC's clipboard by itself, and Ctrl+V on the screen pastes the PC's text on the device. Text only, and the content is never logged.
+- Right-click is Back, as with a mouse on Android itself (GES-07). A mouse click on the device buttons does not move focus away from the screen, so you can keep typing.
 
-## Afvigelser (KIT-04)
+## Deviations (KIT-04)
 
-| Regel | Afvigelse | Begrundelse | Dato |
+| Rule | Deviation | Reason | Date |
 |---|---|---|---|
-| TOK-01 | Breakpointet `40rem` står i `app.css` | CSS tillader ikke custom properties i media queries | 14.11.2026 |
+| TOK-01 | The breakpoint `40rem` is in `app.css` | CSS does not allow custom properties in media queries | 14.11.2026 |
 
-## Tjek i projektet (QA-02)
-- CI (`.github/workflows/ci.yml`): typecheck og build, kontrast-tjek, `cargo fmt`, `clippy` og Rust-tests.
-- Rigtig enhed (QA-04): røgtesten med `STORMCAST_SMOKE=1` spejler den første klar enhed, tæller afkodede billeder, trykker Seneste apps og Tilbage og måler tiden fra input til nyt billede. Den får også enheden til at spille en testtone, kræver, at tonen når PC'en, og at lyden ligger inden for grænserne for sync.
-- I hånden indtil videre: glaspanelernes kontrast over hvidt og sort skrivebord, skærmlæser (A11Y-08) og 200 % zoom (TYP-02).
+## Checks in the project (QA-02)
+- CI (`.github/workflows/ci.yml`): typecheck and build, contrast check, `cargo fmt`, `clippy` and Rust tests.
+- Real device (QA-04): the smoke test with `STORMCAST_SMOKE=1` mirrors the first ready device, counts decoded frames, presses Recent apps and Back and measures the time from input to a new frame. It also makes the device play a test tone, requires the tone to reach the PC and the sound to be within the sync limits.
+- By hand for now: the glass panels' contrast over a white and a black desktop, screen reader (A11Y-08) and 200 % zoom (TYP-02).

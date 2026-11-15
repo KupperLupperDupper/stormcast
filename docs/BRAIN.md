@@ -1,43 +1,43 @@
 # Brain: stormcast
 
-Kortet over projektet (PRJ-02): hvad systemet er, og hvor tingene er. Det importeres i `CLAUDE.md` og indlæses i hver session, så det holdes under 60 linjer og peger frem for at forklare. Status står i [BACKLOG.md](BACKLOG.md) og [LOG.md](LOG.md), aldrig her. Er noget forkert, rettes det i samme commit som ændringen.
+The project map (PRJ-02): what the system is and where things are. It is imported in `CLAUDE.md` and loaded in every session, so it stays under 60 lines and points rather than explains. Status lives in [BACKLOG.md](BACKLOG.md) and [LOG.md](LOG.md), never here. If something is wrong, fix it in the same commit as the change.
 
-## Hvad det er
-Windows-app, der spejler og styrer en Android-skærm over USB og spiller enhedens lyd på pc'en. Tauri 2: Rust i `src-tauri/`, TypeScript og CSS i `src/`, og vores egen telefonserver i Java i `server/`. Mere i [ARCHITECTURE.md](ARCHITECTURE.md); brugerens side i [README.md](../README.md).
+## What it is
+Windows app that mirrors and controls an Android screen over USB and plays the device's sound on the PC. Tauri 2: Rust in `src-tauri/`, TypeScript and CSS in `src/`, and our own phone server in Java in `server/`. More in [ARCHITECTURE.md](ARCHITECTURE.md); the user's side in [README.md](../README.md).
 
-## Hvor tingene er
-Javakoden ligger i `server/src/main/java/com/stormitron/stormcast/server/`; Java-filerne nedenfor ligger dér.
+## Where things are
+The Java code is in `server/src/main/java/com/stormitron/stormcast/server/`; the Java files below are there.
 
-| Skal du … | Så se |
+| To … | See |
 |---|---|
-| forstå helheden | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| vide, hvorfor noget er, som det er | [DECISIONS.md](DECISIONS.md) |
-| se, hvad der er i gang, og hvad der er næste | [BACKLOG.md](BACKLOG.md) |
-| fortsætte arbejdet fra sidst | de øverste indlæg i [LOG.md](LOG.md) |
-| ændre protokollen | [PROTOCOL.md](PROTOCOL.md), `protocol/vectors.txt`, `Protocol.java` og `src-tauri/src/protocol.rs`, alle i samme commit |
-| fange skærm, input, udklipsholder eller lyd på enheden | `DisplayCapture.java`, `InputInjector.java` og `AudioCapture.java`: de eneste med skjulte Android-API'er |
-| gøre appens styringsbeskeder til input på enheden | `Controller.java` |
-| sende lyden og give den PTS på billedets ur | `AudioStreamer.java` og `AudioTiming.java` |
-| styre en session: adb push, reverse-tunnel, start af serveren og video til web-UI'et | `src-tauri/src/mirror.rs`; beskedformatet til web-UI'et deles med `src/player.ts` |
-| ændre H.264-opsætningen eller decoderens reordering | `src-tauri/src/h264.rs` |
-| vælge skin (glas eller solid) | `src-tauri/src/appearance.rs`: glas på Windows 11 build 22621+ med gennemsigtighed slået til |
-| afkode og tegne billedet | `src/player.ts`: WebCodecs og canvas; det nyeste billede vinder |
-| afspille lyden på pc'en | `src/audio.ts`: Web Audio, blokke planlagt lidt fremme, en buffer, der vokser ved underløb, og måling af lyd mod billede |
-| ændre mus, touch, hjul eller tastatur | `src/control.ts`; Rust koder beskederne i `src-tauri/src/protocol.rs` |
-| ændre farver, afstande og andre designværdier | `src/styles/tokens.css` (tre lag, TOK-01, TOK-02); `src/styles/app.css` bruger kun lag 2 og 3 |
-| ændre en tekst i UI'et | `src/strings.ts` |
-| se stil, risici og afvigelser | [DESIGN-BRIEF.md](DESIGN-BRIEF.md) |
-| udgive en version | [README.md](../README.md#releases) og versionens afsnit i `CHANGELOG.md` |
+| understand the whole | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| know why something is the way it is | [DECISIONS.md](DECISIONS.md) |
+| see what is in progress and what is next | [BACKLOG.md](BACKLOG.md) |
+| continue the work from last time | the top entries in [LOG.md](LOG.md) |
+| change the protocol | [PROTOCOL.md](PROTOCOL.md), `protocol/vectors.txt`, `Protocol.java` and `src-tauri/src/protocol.rs`, all in the same commit |
+| capture screen, input, clipboard or sound on the device | `DisplayCapture.java`, `InputInjector.java` and `AudioCapture.java`: the only files with hidden Android APIs |
+| turn the app's control messages into input on the device | `Controller.java` |
+| send the sound and give it PTS on the picture's clock | `AudioStreamer.java` and `AudioTiming.java` |
+| run a session: adb push, reverse tunnel, server start and video to the web UI | `src-tauri/src/mirror.rs`; the message format to the web UI is shared with `src/player.ts` |
+| change the H.264 setup or the decoder's reordering | `src-tauri/src/h264.rs` |
+| choose the skin (glass or solid) | `src-tauri/src/appearance.rs`: glass on Windows 11 build 22621+ with transparency turned on |
+| decode and draw the picture | `src/player.ts`: WebCodecs and canvas; the newest frame wins |
+| play the sound on the PC | `src/audio.ts`: Web Audio, blocks scheduled a little ahead, a buffer that grows on underrun, and sound-to-picture measurement |
+| change mouse, touch, wheel or keyboard | `src/control.ts`; Rust encodes the messages in `src-tauri/src/protocol.rs` |
+| change colours, spacing and other design values | `src/styles/tokens.css` (three layers, TOK-01, TOK-02); `src/styles/app.css` uses only layers 2 and 3 |
+| change a text in the UI | `src/strings.ts` |
+| see style, risks and deviations | [DESIGN-BRIEF.md](DESIGN-BRIEF.md) |
+| release a version | [README.md](../README.md#releases) and the version's section in `CHANGELOG.md` |
 
-## Kør og test
-- `npm run tauri dev`: kør appen. Den bygger også telefonserveren.
-- `npm run build:server`: serverens protokoltests og byg; kræver JDK 17+ og Android SDK.
-- `npm run build` og `npm run check:contrast`.
-- I `src-tauri/`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` og `cargo test`.
-- Røgtest på en tilsluttet, låst op enhed: `$env:STORMCAST_SMOKE = "1"; npm run tauri dev`. Den trykker Seneste apps og Tilbage, lytter efter en testtone fra enheden og skriver `STORMCAST_SMOKE_RESULT` med tiden fra input til billede og lydens forskydning mod billedet.
-- `$env:STORMCAST_SKIN = "solid"` eller `"glass"` tvinger et skin.
-- Før commit også `node ~/docs/projects/tools/check.mjs .`
+## Run and test
+- `npm run tauri dev`: run the app. It also builds the phone server.
+- `npm run build:server`: the server's protocol tests and build; needs JDK 17+ and the Android SDK.
+- `npm run build` and `npm run check:contrast`.
+- In `src-tauri/`: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`.
+- Smoke test on a connected, unlocked device: `$env:STORMCAST_SMOKE = "1"; npm run tauri dev`. It presses Recent apps and Back, listens for a test tone from the device and prints `STORMCAST_SMOKE_RESULT` with the time from input to picture and the sound's offset from the picture.
+- `$env:STORMCAST_SKIN = "solid"` or `"glass"` forces a skin.
+- Before committing, also `node ~/docs/projects/tools/check.mjs .`
 
-## Fælder
-- Javakoden er Java 8-syntaks uden biblioteker, men bygges med JDK 17+.
-- CI kører de samme tjek som ovenfor (`.github/workflows/ci.yml`).
+## Pitfalls
+- The Java code is Java 8 syntax without libraries, but is built with JDK 17+.
+- CI runs the same checks as above (`.github/workflows/ci.yml`).

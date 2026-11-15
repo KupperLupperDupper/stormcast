@@ -1,37 +1,37 @@
 # Backlog: stormcast
 
-Køen på tværs af sessioner (PRJ-04): én tabel pr. bane (swimlane), og hvert punkt har et fast ID (PRJ-03). Baner er områder eller milepæle. Et punkt siger, hvornår det er færdigt.
+The queue across sessions (PRJ-04): one table per lane (swimlane), and every item has a fixed ID (PRJ-03). Lanes are areas or milestones. An item says when it is done.
 
-- **Status:** Idé · Næste · I gang (session eller gren) · Venter (på hvad) · Færdig (dato)
-- **Regler:** sæt et punkt til "I gang" med sessionens navn, før arbejdet starter, og højst ét pr. session. Rør ikke punkter, der er i gang hos andre. Commit-beskeden nævner ID'et. Færdige punkter flyttes til Arkiv, når de er en måned gamle.
-- **Næste ID:** B-011
+- **Status:** Idea · Next · Doing (session or branch) · Waiting (on what) · Done (date)
+- **Rules:** set an item to "Doing" with the session's name before work starts, and at most one per session. Do not touch items another session is doing. The commit message names the ID. Done items move to Archive when they are a month old.
+- **Next ID:** B-011
 
-## Bane: Projekt
-| ID | Punkt | Status | Note |
+## Lane: Project
+| ID | Item | Status | Note |
 |---|---|---|---|
-| B-001 | Udfyld docs/BRAIN.md, så en ny session finder rundt uden at søge | Færdig (2026-11-15) | Kortet og kommandoerne er flyttet fra `CLAUDE.md` |
-| B-002 | Beskriv systemet i docs/ARCHITECTURE.md, som det er bygget | Færdig (2026-11-15) | Ud fra README, PROTOCOL.md, `CLAUDE.md` og commit-beskederne |
+| B-001 | Fill in docs/BRAIN.md so a new session finds its way without searching | Done (2026-11-15) | The map and the commands moved from `CLAUDE.md` |
+| B-002 | Describe the system in docs/ARCHITECTURE.md as built | Done (2026-11-15) | From the README, PROTOCOL.md, `CLAUDE.md` and the commit messages |
 
-## Bane: Spejling
-| ID | Punkt | Status | Note |
+## Lane: Mirroring
+| ID | Item | Status | Note |
 |---|---|---|---|
-| B-003 | Fuldskærmsvisning af telefonbilledet | Idé | Grenen `claude/fullscreen-view-10afda` findes, men har ingen egne commits |
-| B-004 | Trådløs forbindelse uden USB-kabel | Idé | README kalder den planlagt |
-| B-007 | Vis flere enheder på én gang | Idé | Færdig, når to tilsluttede enheder spejles og styres samtidig |
-| B-008 | Diagnostik om enheden | Idé | Fx model, Android-version, opløsning, batteri og forbindelsens tilstand |
+| B-003 | Full-screen view of the phone picture | Idea | The branch `claude/fullscreen-view-10afda` exists but has no commits of its own |
+| B-004 | Wireless connection without a USB cable | Idea | The README calls it planned |
+| B-007 | Show several devices at once | Idea | Done when two connected devices are mirrored and controlled at the same time |
+| B-008 | Diagnostics about the device | Idea | For example model, Android version, resolution, battery and connection state |
 
-## Bane: UI
-| ID | Punkt | Status | Note |
+## Lane: UI
+| ID | Item | Status | Note |
 |---|---|---|---|
-| B-009 | Adskil enhederne i faner | Idé | Hænger sammen med B-007 |
-| B-010 | Bedre layout af knapperne | Idé | Følg UI-rulebooken (CMP-02: mindst 24 px med mus) |
+| B-009 | Separate the devices into tabs | Idea | Goes with B-007 |
+| B-010 | Better button layout | Idea | Follow the UI rulebook (CMP-02: at least 24 px with a mouse) |
 
-## Bane: Release
-| ID | Punkt | Status | Note |
+## Lane: Release
+| ID | Item | Status | Note |
 |---|---|---|---|
-| B-005 | Udgiv 0.2.0 med lyden, der står under Unreleased i `CHANGELOG.md` | Idé | Tagget skal matche `version` i `package.json` |
-| B-006 | Kodesignér installer og zip, så SmartScreen ikke advarer | Idé | Kendt problem i 0.1.0 |
+| B-005 | Release 0.2.0 with the sound listed under Unreleased in `CHANGELOG.md` | Idea | The tag must match `version` in `package.json` |
+| B-006 | Code-sign the installer and zip so SmartScreen does not warn | Idea | Known issue in 0.1.0 |
 
-## Arkiv
-| ID | Punkt | Status | Note |
+## Archive
+| ID | Item | Status | Note |
 |---|---|---|---|
