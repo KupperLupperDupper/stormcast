@@ -108,6 +108,11 @@ export class DeviceControl {
     this.send({ type: "button", button });
   }
 
+  /** Starts or stops sound capture on the device. */
+  audio(on: boolean): void {
+    this.send({ type: "audio", on });
+  }
+
   /** Stops sending: the session is over. */
   close(): void {
     this.closed = true;

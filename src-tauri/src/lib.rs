@@ -1,8 +1,9 @@
 //! Stormcast mirrors and controls an Android screen from Windows over USB.
 //!
 //! The Rust side finds `adb`, starts Stormcast's server on the device, forwards the H.264
-//! stream to the web view, which decodes it with WebCodecs (`src/player.ts`), and sends the
-//! web view's input back to the device (`src/control.ts`).
+//! stream to the web view, which decodes it with WebCodecs (`src/player.ts`), and the
+//! device's sound, which it plays with Web Audio (`src/audio.ts`), and sends the web view's
+//! input back to the device (`src/control.ts`).
 
 mod adb;
 mod appearance;
@@ -13,7 +14,7 @@ mod protocol;
 
 use appearance::{Appearance, Skin};
 use error::AppError;
-use mirror::MirrorState;
+use mirror::{MirrorState, ServerOptions};
 use serde::Serialize;
 use tauri::ipc::{Channel, Response};
 use tauri::window::{Effect, EffectsBuilder};
@@ -38,14 +39,22 @@ async fn list_devices(app: AppHandle) -> Result<Vec<adb::Device>, AppError> {
     adb::Adb::locate(&app)?.devices().await
 }
 
+/// `audio`: play the device's sound on the PC from the start.
 #[tauri::command]
 async fn start_mirror(
     app: AppHandle,
     state: State<'_, MirrorState>,
+    startup: State<'_, Startup>,
     serial: String,
+    audio: bool,
     on_packet: Channel<Response>,
 ) -> Result<(), AppError> {
-    state.start(app, serial, on_packet).await;
+    let options = ServerOptions {
+        audio,
+        // The smoke test listens for a tone from the device.
+        tone: startup.smoke,
+    };
+    state.start(app, serial, options, on_packet).await;
     Ok(())
 }
 

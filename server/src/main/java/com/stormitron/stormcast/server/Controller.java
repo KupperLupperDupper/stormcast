@@ -30,6 +30,7 @@ final class Controller implements Runnable {
 
     private final ControlReader reader;
     private final AtomicReference<Geometry> geometry;
+    private final AudioStreamer audio;
     /** Null when the device offers no way to inject: messages are then read and dropped. */
     private final InputInjector injector;
     /** The virtual keyboard's key map, which turns text into key presses; null if missing. */
@@ -42,10 +43,11 @@ final class Controller implements Runnable {
     private long touchDownTime;
     private boolean pasteLogged;
 
-    private Controller(InputStream in, AtomicReference<Geometry> geometry, InputInjector injector,
-            KeyCharacterMap keyboard) {
+    private Controller(InputStream in, AtomicReference<Geometry> geometry, AudioStreamer audio,
+            InputInjector injector, KeyCharacterMap keyboard) {
         this.reader = new ControlReader(in);
         this.geometry = geometry;
+        this.audio = audio;
         this.injector = injector;
         this.keyboard = keyboard;
         for (int i = 0; i < TouchPointers.MAX; i++) {
@@ -57,10 +59,12 @@ final class Controller implements Runnable {
 
     /**
      * Reads control messages on a new thread. It reads them even when they cannot be injected, so
-     * the app is never blocked writing them. The streamer publishes each session's geometry, and
-     * text copied on the device goes to the app through the writer.
+     * the app is never blocked writing them. The streamer publishes each session's geometry, text
+     * copied on the device goes to the app through the writer, and audio messages turn the audio
+     * streamer on and off, also when input cannot be injected.
      */
-    static void start(InputStream in, MessageWriter writer, AtomicReference<Geometry> geometry) {
+    static void start(InputStream in, MessageWriter writer, AtomicReference<Geometry> geometry,
+            AudioStreamer audio) {
         InputInjector injector = null;
         KeyCharacterMap keyboard = null;
         try {
@@ -77,7 +81,7 @@ final class Controller implements Runnable {
                 Ln.w("The device's clipboard does not reach the app: " + e);
             }
         }
-        Thread thread = new Thread(new Controller(in, geometry, injector, keyboard), "stormcast-control");
+        Thread thread = new Thread(new Controller(in, geometry, audio, injector, keyboard), "stormcast-control");
         thread.setDaemon(true);
         thread.start();
     }
@@ -106,6 +110,10 @@ final class Controller implements Runnable {
         try {
             ControlMessage message;
             while ((message = reader.next()) != null) {
+                if (message.type == Protocol.TYPE_SET_AUDIO) {
+                    audio.setEnabled(((ControlMessage.Audio) message).on);
+                    continue;
+                }
                 if (injector == null) {
                     continue;
                 }

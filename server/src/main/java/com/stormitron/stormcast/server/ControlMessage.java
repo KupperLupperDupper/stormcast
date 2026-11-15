@@ -169,6 +169,26 @@ abstract class ControlMessage {
         }
     }
 
+    /** Starts or stops audio capture. */
+    static final class Audio extends ControlMessage {
+        final boolean on;
+
+        Audio(boolean on) {
+            super(Protocol.TYPE_SET_AUDIO);
+            this.on = on;
+        }
+
+        @Override
+        String name() {
+            return "audio";
+        }
+
+        @Override
+        public String toString() {
+            return "audio " + (on ? "on" : "off");
+        }
+    }
+
     /** Wheel notches, positive to the right and up. */
     static final class Scroll extends Positioned {
         final float horizontal;

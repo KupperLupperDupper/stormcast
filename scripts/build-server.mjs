@@ -26,6 +26,7 @@ const PLAIN_JAVA = [
   "ControlReader.java",
   "TouchPointers.java",
   "Geometry.java",
+  "AudioTiming.java",
 ];
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");

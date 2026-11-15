@@ -52,7 +52,9 @@ export type ControlMessage =
   | { type: "button"; button: DeviceButton }
   | { type: "scroll"; x: number; y: number; width: number; height: number; hScroll: number; vScroll: number }
   /** Ctrl+V: the app pastes the PC's clipboard text on the device. */
-  | { type: "paste" };
+  | { type: "paste" }
+  /** Starts or stops sound capture on the device. */
+  | { type: "audio"; on: boolean };
 
 export const getStartup = () => invoke<Startup>("get_startup");
 export const listDevices = () => invoke<Device[]>("list_devices");
@@ -61,11 +63,14 @@ export const smokeReport = (report: Record<string, unknown>) => invoke<void>("sm
 /** Sends control messages to the device in this order. Without a session they are dropped. */
 export const sendControl = (messages: ControlMessage[]) => invoke<void>("send_control", { messages });
 
-/** Starts mirroring. Messages arrive on `onPacket` until the stream ends or `stopMirror` is called. */
-export function startMirror(serial: string, onPacket: (packet: unknown) => void): Promise<void> {
+/**
+ * Starts mirroring, with the device's sound on the PC when `audio` is set. Messages arrive on
+ * `onPacket` until the stream ends or `stopMirror` is called.
+ */
+export function startMirror(serial: string, audio: boolean, onPacket: (packet: unknown) => void): Promise<void> {
   const channel = new Channel<unknown>();
   channel.onmessage = onPacket;
-  return invoke<void>("start_mirror", { serial, onPacket: channel });
+  return invoke<void>("start_mirror", { serial, audio, onPacket: channel });
 }
 
 export function asAppError(error: unknown): AppError {

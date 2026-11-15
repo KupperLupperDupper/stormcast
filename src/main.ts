@@ -1,5 +1,6 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
+import { AudioPlayer, type AudioState } from "./audio";
 import { DeviceControl } from "./control";
 import { h } from "./dom";
 import { icon } from "./icons";
@@ -35,6 +36,15 @@ const SMOKE_SETTLE_MS = 1500;
 const SMOKE_INPUT_MS = 3000;
 const SMOKE_RESTORE_MS = 1500;
 const SMOKE_TIMEOUT_MS = 45000;
+/** The server plays its test tone about a second after capture starts. */
+const SMOKE_TONE_MS = 5000;
+/** A peak this loud is sound; silence from the device is exactly 0. */
+const SMOKE_TONE_LEVEL = 0.01;
+const SMOKE_TOGGLE_MS = 3000;
+/** Sound may be this far ahead of the picture or behind it (ITU-R BT.1359, detectability). */
+const SYNC_AHEAD_MS = 45;
+const SYNC_BEHIND_MS = 125;
+const SOUND_KEY = "stormcast.soundOnPc";
 
 const deviceList = byId("device-list");
 const stage = byId("stage");
@@ -48,6 +58,9 @@ let player: MirrorPlayer | null = null;
 let control: DeviceControl | null = null;
 let session = 0;
 let statusText: HTMLElement | null = null;
+let soundButton: HTMLButtonElement | null = null;
+/** Play the device's sound on this PC; remembered between sessions. */
+let soundOnPc = loadSoundSetting();
 let smoke: "off" | "waiting" | "running" | "done" = "off";
 
 function byId(id: string): HTMLElement {
@@ -159,17 +172,24 @@ async function connect(serial: string) {
     "aria-label": text.screenLabel,
     "aria-describedby": "control-hint-active",
   });
-  const current = new MirrorPlayer(canvas, {
-    hello: (deviceName) => {
-      if (id !== session) return;
-      setView({ kind: "mirroring", serial, deviceName });
-      announce(text.announceMirroring(deviceName));
-    },
-    end: (error) => {
-      if (id !== session) return;
-      failSession(serial, error);
-    },
+  const audio = new AudioPlayer(soundOnPc, (state) => {
+    if (id === session) soundChanged(state);
   });
+  const current = new MirrorPlayer(
+    canvas,
+    {
+      hello: (deviceName) => {
+        if (id !== session) return;
+        setView({ kind: "mirroring", serial, deviceName });
+        announce(text.announceMirroring(deviceName));
+      },
+      end: (error) => {
+        if (id !== session) return;
+        failSession(serial, error);
+      },
+    },
+    audio,
+  );
   player = current;
   control = new DeviceControl(canvas);
   setView({ kind: "connecting", serial });
@@ -181,7 +201,7 @@ async function connect(serial: string) {
     announce(text.connectingSlow);
   }, SLOW_CONNECT_MS);
   try {
-    await startMirror(serial, (packet) => {
+    await startMirror(serial, soundOnPc, (packet) => {
       if (id === session) current.handle(packet);
     });
   } catch (e) {
@@ -196,6 +216,7 @@ function endSession() {
   control?.close();
   control = null;
   statusText = null;
+  soundButton = null;
 }
 
 function failSession(serial: string, error: AppError) {
@@ -221,6 +242,7 @@ function renderStage() {
   const hadFocus = stage.contains(document.activeElement);
   hideTooltip();
   statusText = null;
+  soundButton = null;
   stage.replaceChildren(stageContent());
   if (hadFocus) {
     // A11Y-09: the focused element is gone, so move focus on purpose. When mirroring starts,
@@ -301,6 +323,7 @@ function mirrorView(deviceName: string): Node {
         deviceButton(text.recentApps, "recentApps"),
         deviceButton(text.power, "power"),
       ),
+      soundToggle(),
       button(text.stop, () => void disconnect()),
       // Says whether the keyboard goes to the device. Both lines keep their space, so
       // switching moves nothing (LAY-02).
@@ -336,6 +359,71 @@ function deviceButton(label: string, which: DeviceButton) {
   );
 }
 
+/**
+ * Plays the device's sound on this PC, or gives it back to the device. A toggle with a fixed name
+ * and aria-pressed; the icon shows the state too (COL-03). A mouse click leaves focus on the screen.
+ */
+function soundToggle() {
+  soundButton = withTooltip(
+    h("button", {
+      class: "button button--secondary button--icon",
+      type: "button",
+      onmousedown: (event: Event) => event.preventDefault(),
+      onclick: toggleSound,
+    }),
+  );
+  renderSound();
+  return soundButton;
+}
+
+function renderSound() {
+  if (!soundButton) return;
+  const unsupported = player?.audio.current === "unsupported";
+  const on = soundOnPc && !unsupported;
+  soundButton.setAttribute("aria-pressed", String(on));
+  soundButton.setAttribute("aria-label", unsupported ? text.soundUnsupportedLabel : text.soundOnPc);
+  if (unsupported) soundButton.setAttribute("aria-disabled", "true");
+  else soundButton.removeAttribute("aria-disabled");
+  soundButton.replaceChildren(icon(on ? "soundOn" : "soundOff"));
+}
+
+function toggleSound() {
+  if (!player) return;
+  if (player.audio.current === "unsupported") {
+    announce(text.soundUnsupportedLabel);
+    return;
+  }
+  soundOnPc = !soundOnPc;
+  // The smoke test toggles too, but never changes what the user chose.
+  if (smoke === "off") saveSoundSetting(soundOnPc);
+  player.audio.setEnabled(soundOnPc);
+  control?.audio(soundOnPc);
+  renderSound();
+}
+
+function soundChanged(state: AudioState) {
+  renderSound();
+  updateStatus();
+  const note = text.soundNote(state);
+  if (note) announce(note);
+}
+
+function loadSoundSetting(): boolean {
+  try {
+    return localStorage.getItem(SOUND_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function saveSoundSetting(on: boolean) {
+  try {
+    localStorage.setItem(SOUND_KEY, on ? "1" : "0");
+  } catch {
+    // Not remembered; it still applies to this session.
+  }
+}
+
 function message(title: string, body: Array<Node | null>, busy = false): Node {
   return h(
     "section",
@@ -355,13 +443,30 @@ function details(detail: string): Node {
   return h("details", { class: "details" }, h("summary", {}, text.details), h("pre", {}, detail));
 }
 
-window.setInterval(() => {
+/** Size and frame rate, and why there is no sound, when there is none. */
+function updateStatus() {
   if (!player || !statusText) return;
   const stats = player.stats();
-  statusText.textContent = stats.width > 0 ? text.status(stats.width, stats.height, stats.fps) : "";
-}, 1000);
+  const parts = [
+    stats.width > 0 ? text.status(stats.width, stats.height, stats.fps) : null,
+    text.soundNote(stats.audio.state),
+  ];
+  statusText.textContent = parts.filter((part) => part !== null).join(" · ");
+}
+
+window.setInterval(updateStatus, 1000);
 
 // ---------- Smoke test (STORMCAST_SMOKE=1) ----------
+
+interface SmokeAudio {
+  state: AudioState;
+  /** The device's test tone reached the PC. */
+  heard: boolean;
+  /** Sound and picture within ITU-R BT.1359's limits. */
+  inSync: boolean;
+  /** The speaker button stopped the device's capture and started it again. */
+  toggled: boolean;
+}
 
 interface SmokeInput {
   /** The picture changed after Recent apps: the server got the input and injected it. */
@@ -393,23 +498,60 @@ async function runSmoke(serial: string) {
   const changedAt = await changed;
   device.button("back");
   await sleep(SMOKE_RESTORE_MS);
-  await finishSmoke(undefined, {
-    applied: changedAt !== null,
-    latencyMs: changedAt === null ? null : Math.round(changedAt - sentAt),
-  });
+  const input = { applied: changedAt !== null, latencyMs: changedAt === null ? null : Math.round(changedAt - sentAt) };
+  await waitUntil(() => {
+    const audio = player?.audio.stats();
+    return audio === undefined || audio.peak >= SMOKE_TONE_LEVEL || audio.state === "unsupported";
+  }, SMOKE_TONE_MS);
+  const audio = smokeAudio();
+  if (audio && audio.state === "playing") audio.toggled = await smokeToggleSound();
+  await finishSmoke(undefined, input, audio);
 }
 
-async function finishSmoke(error?: AppError, input?: SmokeInput) {
+function smokeAudio(): SmokeAudio | undefined {
+  const stats = player?.stats();
+  if (!stats) return undefined;
+  const offset = stats.avOffsetMs;
+  return {
+    state: stats.audio.state,
+    heard: stats.audio.peak >= SMOKE_TONE_LEVEL,
+    inSync: offset !== null && offset >= -SYNC_AHEAD_MS && offset <= SYNC_BEHIND_MS,
+    toggled: false,
+  };
+}
+
+/** Turns sound off and on as the speaker button does: the device must stop capture, then play again. */
+async function smokeToggleSound(): Promise<boolean> {
+  const audio = player?.audio;
+  if (!audio) return false;
+  const stops = audio.stats().stops;
+  toggleSound();
+  const stopped = await waitUntil(() => audio.stats().stops > stops, SMOKE_TOGGLE_MS);
+  toggleSound();
+  const playing = await waitUntil(() => audio.current === "playing", SMOKE_TOGGLE_MS);
+  return stopped && playing;
+}
+
+async function finishSmoke(error?: AppError, input?: SmokeInput, audio?: SmokeAudio) {
   if (smoke === "done" || smoke === "off") return;
   smoke = "done";
   const stats = player?.stats() ?? null;
+  // A device older than Android 12 passes without sound: it says so instead.
+  const soundOk =
+    audio !== undefined && (audio.state === "unsupported" || (audio.heard && audio.inSync && audio.toggled));
   const ok =
-    !error && stats !== null && stats.framesDecoded > 0 && stats.decoderErrors === 0 && input?.applied === true;
+    !error &&
+    stats !== null &&
+    stats.framesDecoded > 0 &&
+    stats.decoderErrors === 0 &&
+    input?.applied === true &&
+    soundOk;
   await smokeReport({
     ok,
     error: error ?? null,
     stats,
     input: input ?? null,
+    audio: audio ?? null,
     view: view.kind,
     appearance: startup?.appearance ?? null,
   });
@@ -440,6 +582,8 @@ async function main() {
   document.documentElement.dataset.skin = startup?.appearance.skin ?? "solid";
   if (startup?.smoke) {
     smoke = "waiting";
+    // The smoke test listens for the device's sound, whatever was chosen before.
+    soundOnPc = true;
     window.setTimeout(
       () => void finishSmoke({ code: "smoke_timeout", detail: "no result within the time limit" }),
       SMOKE_TIMEOUT_MS,

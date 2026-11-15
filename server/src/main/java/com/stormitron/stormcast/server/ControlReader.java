@@ -62,6 +62,8 @@ final class ControlReader {
                 case Protocol.TYPE_SET_CLIPBOARD:
                     return new ControlMessage.Clipboard(data.get() != 0,
                             new String(payload, 1, payload.length - 1, StandardCharsets.UTF_8));
+                case Protocol.TYPE_SET_AUDIO:
+                    return new ControlMessage.Audio(data.get() != 0);
                 default:
                     return null;
             }

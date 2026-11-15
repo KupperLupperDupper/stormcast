@@ -1,6 +1,6 @@
 /**
  * Decodes the H.264 stream from the Rust side with WebCodecs (hardware decoding in
- * WebView2) and draws the newest frame on a canvas.
+ * WebView2) and draws the newest frame on a canvas. Audio messages go to the AudioPlayer.
  *
  * Message layout, first byte is the tag (written by src-tauri/src/mirror.rs):
  *   0 hello    JSON { deviceName }
@@ -8,13 +8,23 @@
  *   2 config   u8 codec length, codec, SPS/PPS  (before the first key frame)
  *   3 frame    u8 flags (bit 0: key frame), u64 PTS in µs, data
  *   4 end      JSON { code, detail }
+ *   5–7        audio, see src/audio.ts
  */
+
+import { AudioPlayer, median, type AudioStats } from "./audio";
 
 const MSG_HELLO = 0;
 const MSG_SESSION = 1;
 const MSG_CONFIG = 2;
 const MSG_FRAME = 3;
 const MSG_END = 4;
+const MSG_AUDIO_CONFIG = 5;
+const MSG_AUDIO = 6;
+const MSG_AUDIO_OFF = 7;
+/** Drawn frames kept for the picture's timing. */
+const TIMING_KEPT = 120;
+/** Samples both sides need before the offset between sound and picture is reported. */
+const MIN_TIMING_SAMPLES = 10;
 const MAX_DECODER_ERRORS = 3;
 /** waitForChange compares tiny copies of the picture, this many pixels square. */
 const PROBE_SIZE = 16;
@@ -33,6 +43,12 @@ export interface PlayerStats {
   framesDropped: number;
   decoderErrors: number;
   firstFrameMs: number | null;
+  audio: AudioStats;
+  /**
+   * How much later the sound is heard than the picture is drawn, from both sides' PTS on the
+   * device's clock: positive when the sound is late. Null until both have played a while.
+   */
+  avOffsetMs: number | null;
 }
 
 export interface PlayerEvents {
@@ -62,13 +78,17 @@ export class MirrorPlayer {
   private closed = false;
   private probe: OffscreenCanvasRenderingContext2D | null = null;
   private onDraw: (() => void) | null = null;
+  /** Draw time minus PTS, in ms, of recent frames. */
+  private readonly drawnMinusPts: number[] = [];
+  readonly audio: AudioPlayer;
 
-  constructor(canvas: HTMLCanvasElement, events: PlayerEvents) {
+  constructor(canvas: HTMLCanvasElement, events: PlayerEvents, audio: AudioPlayer) {
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("Canvas 2D is not available");
     this.canvas = canvas;
     this.ctx = ctx;
     this.events = events;
+    this.audio = audio;
   }
 
   /** Handles one message from the Rust side. */
@@ -90,6 +110,15 @@ export class MirrorPlayer {
       }
       case MSG_FRAME:
         this.decode((bytes[1] & 1) === 1, Number(view.getBigUint64(2)), bytes.subarray(10));
+        break;
+      case MSG_AUDIO_CONFIG:
+        this.audio.configure(view.getUint32(1), bytes[5]);
+        break;
+      case MSG_AUDIO:
+        this.audio.push(Number(view.getBigUint64(1)), bytes.subarray(9), performance.now());
+        break;
+      case MSG_AUDIO_OFF:
+        this.audio.off(bytes[1]);
         break;
       case MSG_END:
         this.events.end(JSON.parse(this.utf8.decode(bytes.subarray(1))));
@@ -113,6 +142,8 @@ export class MirrorPlayer {
       framesDropped: this.framesDropped,
       decoderErrors: this.decoderErrors,
       firstFrameMs: this.firstFrameMs === null ? null : Math.round(this.firstFrameMs),
+      audio: this.audio.stats(),
+      avOffsetMs: this.avOffset(),
     };
   }
 
@@ -143,6 +174,14 @@ export class MirrorPlayer {
     this.pending = null;
     if (this.decoder && this.decoder.state !== "closed") this.decoder.close();
     this.decoder = null;
+    this.audio.close();
+  }
+
+  private avOffset(): number | null {
+    const audio = this.audio.timing();
+    if (audio.length < MIN_TIMING_SAMPLES || this.drawnMinusPts.length < MIN_TIMING_SAMPLES) return null;
+    // The clock offset between device and PC is in both, so it cancels out.
+    return Math.round((median(audio) ?? 0) - (median(this.drawnMinusPts) ?? 0));
   }
 
   /** Sizes the canvas before the first frame, so the layout does not jump (LAY-02). */
@@ -216,8 +255,11 @@ export class MirrorPlayer {
     }
     this.setSize(frame.displayWidth, frame.displayHeight);
     this.ctx.drawImage(frame, 0, 0, this.canvas.width, this.canvas.height);
+    const drawnAt = performance.now();
+    this.drawnMinusPts.push(drawnAt - frame.timestamp / 1000);
+    if (this.drawnMinusPts.length > TIMING_KEPT) this.drawnMinusPts.shift();
     frame.close();
-    this.drawTimes.push(performance.now());
+    this.drawTimes.push(drawnAt);
     if (this.drawTimes.length > 240) this.drawTimes.splice(0, 120);
     this.onDraw?.();
   }

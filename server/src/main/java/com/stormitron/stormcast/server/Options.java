@@ -15,12 +15,18 @@ final class Options {
     final int bitRate;
     /** Frames per second; 0 means no limit. */
     final int maxFps;
+    /** Start audio capture at once. */
+    final boolean audio;
+    /** Play a short test tone on the device once audio capture runs, for the smoke test. */
+    final boolean tone;
 
-    private Options(String socketName, int maxSize, int bitRate, int maxFps) {
+    private Options(String socketName, int maxSize, int bitRate, int maxFps, boolean audio, boolean tone) {
         this.socketName = socketName;
         this.maxSize = maxSize;
         this.bitRate = bitRate;
         this.maxFps = maxFps;
+        this.audio = audio;
+        this.tone = tone;
     }
 
     static Options parse(String[] args) {
@@ -36,6 +42,8 @@ final class Options {
         int maxSize = 0;
         int bitRate = DEFAULT_BIT_RATE;
         int maxFps = 0;
+        boolean audio = false;
+        boolean tone = false;
         for (int i = 1; i < args.length; i++) {
             String arg = args[i];
             int equals = arg.indexOf('=');
@@ -57,6 +65,12 @@ final class Options {
                 case "max_fps":
                     maxFps = parseInt(key, value);
                     break;
+                case "audio":
+                    audio = parseFlag(key, value);
+                    break;
+                case "tone":
+                    tone = parseFlag(key, value);
+                    break;
                 default:
                     throw new IllegalArgumentException("Unknown option: " + key);
             }
@@ -64,7 +78,14 @@ final class Options {
         if (socketName == null || socketName.isEmpty()) {
             throw new IllegalArgumentException("Missing socket=<name>");
         }
-        return new Options(socketName, maxSize, bitRate, maxFps);
+        return new Options(socketName, maxSize, bitRate, maxFps, audio, tone);
+    }
+
+    private static boolean parseFlag(String what, String value) {
+        if (value.equals("0") || value.equals("1")) {
+            return value.equals("1");
+        }
+        throw new IllegalArgumentException("Invalid " + what + ": " + value + " (0 or 1)");
     }
 
     private static int parseInt(String what, String value) {
