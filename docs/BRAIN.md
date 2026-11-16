@@ -24,6 +24,7 @@ The Java code is in `server/src/main/java/com/stormitron/stormcast/server/`; the
 | choose the skin (glass or solid) | `src-tauri/src/appearance.rs`: glass on Windows 11 build 22621+ with transparency turned on |
 | decode and draw the picture | `src/player.ts`: WebCodecs and canvas; the newest frame wins |
 | play the sound on the PC | `src/audio.ts`: Web Audio, blocks scheduled a little ahead, a buffer that grows on underrun, and sound-to-picture measurement |
+| show more about a device (B-008) | `src-tauri/src/diagnostics.rs` reads it with one `adb shell`; `src/details.ts` formats it for the sidebar |
 | change full screen (B-003) | `setFullScreen` in `src/main.ts`, the `data-full-screen` rules in `app.css` and the window rights in `src-tauri/capabilities/default.json` |
 | change mouse, touch, wheel or keyboard | `src/control.ts`; Rust encodes the messages in `src-tauri/src/protocol.rs` |
 | change colours, spacing and other design values | `src/styles/tokens.css` (three layers, TOK-01, TOK-02); `src/styles/app.css` uses only layers 2 and 3 |

@@ -3,10 +3,12 @@ import "./styles/app.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AudioPlayer, type AudioState } from "./audio";
 import { DeviceControl } from "./control";
+import { facts } from "./details";
 import { h } from "./dom";
 import { icon } from "./icons";
 import {
   asAppError,
+  deviceInfo,
   getStartup,
   listDevices,
   smokeReport,
@@ -14,6 +16,7 @@ import {
   stopMirror,
   type AppError,
   type Device,
+  type DeviceInfo,
   type DeviceButton,
   type Startup,
 } from "./ipc";
@@ -51,10 +54,14 @@ const STATE_LOCKED = 2;
 const STATE_NEEDS_CODE = 4;
 /** After an unlock with a code, this long until a device that is still locked counts as a wrong code. */
 const UNLOCK_CHECK_MS = 4000;
+/** B-008: how often the device details are read again while mirroring. */
+const DETAILS_INTERVAL_MS = 10000;
 
 const deviceList = byId("device-list");
 const stage = byId("stage");
 const announcer = byId("announcer");
+const detailsSection = byId("device-details");
+const factList = byId("device-facts");
 
 let startup: Startup | null = null;
 let devices: Device[] = [];
@@ -72,6 +79,10 @@ let unlockCheck = 0;
 /** B-003: the window is in full screen, without the sidebar. */
 let fullScreen = false;
 let fullScreenButton: HTMLButtonElement | null = null;
+/** B-008: the mirrored device's details, read with adb. */
+let info: DeviceInfo | null = null;
+let detailsTimer = 0;
+let renderedFacts = "";
 /** Play the device's sound on this PC; remembered between sessions. */
 let soundOnPc = loadSoundSetting();
 let smoke: "off" | "waiting" | "running" | "done" = "off";
@@ -194,6 +205,7 @@ async function connect(serial: string) {
       hello: (deviceName) => {
         if (id !== session) return;
         setView({ kind: "mirroring", serial, deviceName });
+        startDetails(serial);
         announce(text.announceMirroring(deviceName));
       },
       end: (error) => {
@@ -239,6 +251,7 @@ function endSession() {
   lockRow = null;
   window.clearTimeout(unlockCheck);
   fullScreenButton = null;
+  stopDetails();
   // Full screen belongs to mirroring; the device list must be back when it ends.
   void setFullScreen(false);
 }
@@ -607,6 +620,7 @@ function details(detail: string): Node {
 
 /** Size and frame rate, and why there is no sound, when there is none. */
 function updateStatus() {
+  renderDetails();
   if (!player || !statusText) return;
   const stats = player.stats();
   const parts = [
@@ -617,6 +631,42 @@ function updateStatus() {
 }
 
 window.setInterval(updateStatus, 1000);
+
+// ---------- Device details (B-008) ----------
+
+/** Reads the device's details now and every few seconds while it is mirrored. */
+function startDetails(serial: string) {
+  stopDetails();
+  const load = async () => {
+    try {
+      const next = await deviceInfo(serial);
+      if (view.kind !== "mirroring" || view.serial !== serial) return;
+      info = next;
+      renderDetails();
+    } catch (e) {
+      // The next read tries again; the stream's own numbers still show (PAT-03).
+      console.warn("Reading the device details failed", e);
+    }
+  };
+  void load();
+  detailsTimer = window.setInterval(() => void load(), DETAILS_INTERVAL_MS);
+}
+
+function stopDetails() {
+  window.clearInterval(detailsTimer);
+  info = null;
+  renderDetails();
+}
+
+/** Shows the details while mirroring; rebuilt only when a value changed. */
+function renderDetails() {
+  const rows = view.kind === "mirroring" ? facts(view.serial, info, player?.stats() ?? null) : [];
+  const key = JSON.stringify(rows);
+  if (key === renderedFacts) return;
+  renderedFacts = key;
+  detailsSection.hidden = rows.length === 0;
+  factList.replaceChildren(...rows.flatMap(([term, value]) => [h("dt", {}, term), h("dd", {}, value)]));
+}
 
 // ---------- Smoke test (STORMCAST_SMOKE=1) ----------
 
@@ -736,6 +786,7 @@ async function main() {
   byId("brand-name").textContent = text.appName;
   byId("brand-tagline").textContent = text.tagline;
   byId("devices-heading").textContent = text.devicesHeading;
+  byId("details-heading").textContent = text.deviceDetails.heading;
   try {
     startup = await getStartup();
   } catch (e) {

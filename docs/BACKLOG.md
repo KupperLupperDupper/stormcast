@@ -17,17 +17,17 @@ The queue across sessions (PRJ-04): one table per lane (swimlane), and every ite
 |---|---|---|---|
 | B-003 | Full-screen view of the phone picture | Done (2026-11-16) | A toggle and F11; Windows full screen without the sidebar, the toolbar stays above the picture. Checked at 1920 × 1080 and by hand |
 | B-004 | Wireless connection without a USB cable | Idea | The README calls it planned |
-| B-007 | Show several devices at once | Idea | Done when two connected devices are mirrored and controlled at the same time |
-| B-008 | Diagnostics about the device | Idea | For example model, Android version, resolution, battery and connection state |
+| B-007 | Show several devices at once | Next | Done when two connected devices are mirrored and controlled at the same time |
+| B-008 | Diagnostics about the device | Done (2026-11-16) | Sidebar "Device details" while mirroring, read with one `adb shell` every 10 s and tested against a OnePlus (Android 14) and a Lenovo (Android 16), plus the stream's own numbers |
 | B-011 | Fit the device picture to the app's view as well as possible | Done (2026-11-16) | Done when the picture fills as much of the view as it can without cropping or distortion, at every window size, rotation and scaling. Goes with B-003 |
 | B-012 | Unlock the device from the PC with its PIN or password | Done (2026-11-16) | Protocol: device state (10) and unlock (23). The toolbar asks for the code only while the device is locked with one; the server wakes, swipes up and types it as key presses. Unlocked a OnePlus LE2123 (Android 14) from a screen that was off |
 
 ## Lane: UI
 | ID | Item | Status | Note |
 |---|---|---|---|
-| B-009 | Separate the devices into tabs | Idea | Goes with B-007 |
-| B-010 | Better button layout | Idea | Follow the UI rulebook (CMP-02: at least 24 px with a mouse). Part of B-014 |
-| B-014 | UI overhaul | Idea | A review of the whole UI against the UI rulebook, done together with B-010 and with B-009's tabs in mind |
+| B-009 | Separate the devices into tabs | Next | Goes with B-007 |
+| B-010 | Better button layout | Next | Follow the UI rulebook (CMP-02: at least 24 px with a mouse). Part of B-014 |
+| B-014 | UI overhaul | Next | A review of the whole UI against the UI rulebook, done together with B-010 and with B-009's tabs in mind |
 
 ## Lane: Release
 | ID | Item | Status | Note |

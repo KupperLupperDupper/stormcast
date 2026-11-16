@@ -131,6 +131,34 @@ ol {
   font: var(--type-subtitle);
 }
 
+/* B-008: device details for the mirrored device, a term and its value on each row. */
+.facts {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.facts[hidden] {
+  display: none;
+}
+
+.facts__list {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-xxs) var(--space-s);
+  margin: 0;
+  font: var(--type-caption);
+}
+
+.facts__list dt {
+  color: var(--color-text-muted);
+}
+
+.facts__list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
 .device-list {
   display: flex;
   flex-direction: column;

@@ -117,6 +117,57 @@ export const text = {
   controlHint: "Click or tap the screen to control the device.",
   controlHintActive: "Keyboard input goes to the device. Press Tab to leave the screen.",
 
+  /** B-008: the device details in the sidebar. Values that are not known are left out. */
+  deviceDetails: {
+    heading: "Device details",
+    device: "Device",
+    android: "Android",
+    screen: "Screen",
+    battery: "Battery",
+    memory: "Memory",
+    storage: "Storage",
+    uptime: "Uptime",
+    connection: "Connection",
+    video: "Video",
+    sound: "Sound",
+    usb: "USB",
+    network: "Network",
+    androidVersion: (version: string, sdk: number | null, patch: string | null) =>
+      [sdk === null ? version : `${version} (API ${sdk})`, patch ? `patch ${patch}` : null]
+        .filter(Boolean)
+        .join(" · "),
+    density: (dpi: string) => `${dpi} dpi`,
+    storageFree: (free: string, total: string) => `${free} free of ${total}`,
+    days: (days: string, hours: string) => `${days} d ${hours} h`,
+    hours: (hours: string, minutes: string) => `${hours} h ${minutes} min`,
+    fps: (fps: string) => `${fps} fps`,
+    dropped: (count: string) => `${count} dropped`,
+    behind: (ms: string) => `${ms} ms behind the picture`,
+    ahead: (ms: string) => `${ms} ms ahead of the picture`,
+    batteryStatus: {
+      charging: "Charging",
+      discharging: "On battery",
+      notCharging: "Not charging",
+      full: "Full",
+    } as Record<string, string>,
+    batteryHealth: {
+      overheat: "Overheating",
+      dead: "Dead",
+      overVoltage: "Over voltage",
+      failure: "Failing",
+      cold: "Too cold",
+    } as Record<string, string>,
+    powerSource: { usb: "from USB", ac: "from a charger", wireless: "wireless charging" } as Record<string, string>,
+    soundState: {
+      off: "Off",
+      starting: "Starting",
+      playing: "Playing",
+      unsupported: "Needs Android 12",
+      refused: "Not allowed",
+      failed: "Stopped",
+    } as Record<string, string>,
+  },
+
   /** B-012: the device's lock state. Its lock screen shows black in the mirror. */
   lock: {
     /** Announced when the field appears: the lock screen itself stays dark in the mirror. */
