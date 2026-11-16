@@ -20,7 +20,7 @@ The queue across sessions (PRJ-04): one table per lane (swimlane), and every ite
 | B-007 | Show several devices at once | Idea | Done when two connected devices are mirrored and controlled at the same time |
 | B-008 | Diagnostics about the device | Idea | For example model, Android version, resolution, battery and connection state |
 | B-011 | Fit the device picture to the app's view as well as possible | Done (2026-11-16) | Done when the picture fills as much of the view as it can without cropping or distortion, at every window size, rotation and scaling. Goes with B-003 |
-| B-012 | Unlock the device from the PC with its PIN or password | Idea | An Unlock button with a field: the app wakes the screen, swipes up and types the code and Enter. The code is never stored or logged, and the field is cleared at once. On Android 12+ the lock screen likely shows black in the mirror (non-secure display, `DisplayCapture.java`); test on a device first whether typing on the keyboard already works |
+| B-012 | Unlock the device from the PC with its PIN or password | Done (2026-11-16) | Protocol: device state (10) and unlock (23). The toolbar asks for the code only while the device is locked with one; the server wakes, swipes up and types it as key presses. Unlocked a OnePlus LE2123 (Android 14) from a screen that was off |
 
 ## Lane: UI
 | ID | Item | Status | Note |

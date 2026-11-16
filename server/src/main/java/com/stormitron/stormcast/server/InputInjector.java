@@ -20,7 +20,12 @@ import java.util.Arrays;
  * <ul>
  * <li>Android 14 and later: InputManagerGlobal.getInstance().injectInputEvent(event, mode);</li>
  * <li>older Android, and the fallback: the same method on InputManager.getInstance();</li>
- * <li>the clipboard: the IClipboard service, whose parameters differ between versions.</li>
+ * <li>the clipboard: the IClipboard service, whose parameters differ between versions;</li>
+ * <li>the lock state (B-012): IWindowManager.isKeyguardLocked and isKeyguardSecure, and
+ * IPowerManager.isInteractive for the screen. Without the window manager the state is unknown and
+ * the app shows no unlock prompt; without the power manager the screen counts as on;</li>
+ * <li>the lock screen's code entry: IWindowManager.dismissKeyguard, the fallback for
+ * Controller's swipe up before the display's size is known.</li>
  * </ul>
  */
 final class InputInjector {
@@ -40,6 +45,13 @@ final class InputInjector {
     /** The text setClipboard put there last, so the watcher does not send it back. */
     private volatile String ownClip;
     private long lastWarning;
+    private Object windowManager;
+    private Method isKeyguardLocked;
+    private Method isKeyguardSecure;
+    private Method dismissKeyguard;
+    private Object power;
+    private Method isInteractive;
+    private boolean powerChecked;
 
     private InputInjector(Object manager, Method injectInputEvent) {
         this.manager = manager;
@@ -163,6 +175,96 @@ final class InputInjector {
         Object listener = Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, handler);
         Method add = method(clipboard.getClass(), "addPrimaryClipChangedListener");
         add.invoke(clipboard, clipboardArguments(add.getParameterTypes(), listener));
+    }
+
+    /** Protocol.STATE_* flags, or DeviceStateWatcher.UNKNOWN when the device does not tell. */
+    int deviceState() {
+        try {
+            connectWindowManager();
+            int flags = screenOn() ? Protocol.STATE_SCREEN_ON : 0;
+            if ((Boolean) isKeyguardLocked.invoke(windowManager)) {
+                flags |= Protocol.STATE_LOCKED;
+                if ((Boolean) isKeyguardSecure.invoke(windowManager, defaultArguments(isKeyguardSecure))) {
+                    flags |= Protocol.STATE_NEEDS_CODE;
+                }
+            }
+            return flags;
+        } catch (InvocationTargetException e) {
+            warn("Could not read the lock state: " + e.getCause());
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            warn("Could not read the lock state: " + e);
+        }
+        return DeviceStateWatcher.UNKNOWN;
+    }
+
+    /** Asks the lock screen to show its code entry, or to go away when it has none. */
+    boolean dismissKeyguard() {
+        try {
+            connectWindowManager();
+            dismissKeyguard.invoke(windowManager, defaultArguments(dismissKeyguard));
+            return true;
+        } catch (InvocationTargetException e) {
+            warn("Could not open the lock screen's code entry: " + e.getCause());
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            warn("Could not open the lock screen's code entry: " + e);
+        }
+        return false;
+    }
+
+    /** Whether the screen is on; true when the power manager does not tell. */
+    boolean screenOn() {
+        try {
+            synchronized (this) {
+                if (!powerChecked) {
+                    powerChecked = true;
+                    power = service("power", "android.os.IPowerManager$Stub");
+                    isInteractive = power.getClass().getMethod("isInteractive");
+                }
+            }
+            return isInteractive == null || (Boolean) isInteractive.invoke(power);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            if (isInteractive != null) {
+                warn("Could not read whether the screen is on: " + e);
+            }
+            isInteractive = null;
+            return true;
+        }
+    }
+
+    private synchronized void connectWindowManager() throws ReflectiveOperationException {
+        if (windowManager != null) {
+            return;
+        }
+        Object service = service("window", "android.view.IWindowManager$Stub");
+        isKeyguardLocked = service.getClass().getMethod("isKeyguardLocked");
+        isKeyguardSecure = method(service.getClass(), "isKeyguardSecure");
+        dismissKeyguard = method(service.getClass(), "dismissKeyguard");
+        windowManager = service;
+    }
+
+    private static Object service(String name, String stub) throws ReflectiveOperationException {
+        IBinder binder = (IBinder) Class.forName("android.os.ServiceManager")
+                .getMethod("getService", String.class).invoke(null, name);
+        if (binder == null) {
+            throw new ClassNotFoundException("no " + name + " service");
+        }
+        return Class.forName(stub).getMethod("asInterface", IBinder.class).invoke(null, binder);
+    }
+
+    /** 0 for numbers (the main user), false and null for the rest: dismissKeyguard needs no callback. */
+    private static Object[] defaultArguments(Method method) {
+        Class<?>[] types = method.getParameterTypes();
+        Object[] arguments = new Object[types.length];
+        for (int i = 0; i < types.length; i++) {
+            if (types[i] == int.class) {
+                arguments[i] = 0;
+            } else if (types[i] == long.class) {
+                arguments[i] = 0L;
+            } else if (types[i] == boolean.class) {
+                arguments[i] = false;
+            }
+        }
+        return arguments;
     }
 
     private synchronized void connectClipboard() throws ReflectiveOperationException {

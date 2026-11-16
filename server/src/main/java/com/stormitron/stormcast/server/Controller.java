@@ -10,7 +10,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -27,6 +30,17 @@ final class Controller implements Runnable {
     private static final int[] BUTTON_KEYCODES = {
         KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_APP_SWITCH, KeyEvent.KEYCODE_POWER,
     };
+    /** Time for the lock screen's code entry to open before the code is typed. */
+    private static final long CODE_ENTRY_DELAY_MS = 700;
+    /** How long a screen may take to turn on, and how long it then settles before the code entry opens. */
+    private static final long SCREEN_ON_TIMEOUT_MS = 1500;
+    private static final long SCREEN_ON_POLL_MS = 50;
+    private static final long SCREEN_ON_SETTLE_MS = 300;
+    /** The swipe that opens the code entry when dismissKeyguard is not available. */
+    private static final int SWIPE_STEPS = 10;
+    private static final long SWIPE_STEP_MS = 15;
+    /** A pointer id the app never uses: its ids are 32-bit. */
+    private static final long SWIPE_POINTER = 1L << 32;
 
     private final ControlReader reader;
     private final AtomicReference<Geometry> geometry;
@@ -35,6 +49,8 @@ final class Controller implements Runnable {
     private final InputInjector injector;
     /** The virtual keyboard's key map, which turns text into key presses; null if missing. */
     private final KeyCharacterMap keyboard;
+    /** Null when input cannot be injected. */
+    private final DeviceStateWatcher state;
     private final TouchPointers fingers = new TouchPointers();
     private final MotionEvent.PointerProperties[] properties = new MotionEvent.PointerProperties[TouchPointers.MAX];
     private final MotionEvent.PointerCoords[] coords = new MotionEvent.PointerCoords[TouchPointers.MAX];
@@ -42,14 +58,16 @@ final class Controller implements Runnable {
     private final Set<Integer> loggedTypes = new HashSet<>();
     private long touchDownTime;
     private boolean pasteLogged;
+    private boolean lockedPasteLogged;
 
     private Controller(InputStream in, AtomicReference<Geometry> geometry, AudioStreamer audio,
-            InputInjector injector, KeyCharacterMap keyboard) {
+            InputInjector injector, KeyCharacterMap keyboard, DeviceStateWatcher state) {
         this.reader = new ControlReader(in);
         this.geometry = geometry;
         this.audio = audio;
         this.injector = injector;
         this.keyboard = keyboard;
+        this.state = state;
         for (int i = 0; i < TouchPointers.MAX; i++) {
             properties[i] = new MotionEvent.PointerProperties();
             properties[i].toolType = MotionEvent.TOOL_TYPE_FINGER;
@@ -61,7 +79,8 @@ final class Controller implements Runnable {
      * Reads control messages on a new thread. It reads them even when they cannot be injected, so
      * the app is never blocked writing them. The streamer publishes each session's geometry, text
      * copied on the device goes to the app through the writer, and audio messages turn the audio
-     * streamer on and off, also when input cannot be injected.
+     * streamer on and off, also when input cannot be injected. The device's lock state goes to the
+     * app too (B-012).
      */
     static void start(InputStream in, MessageWriter writer, AtomicReference<Geometry> geometry,
             AudioStreamer audio) {
@@ -73,6 +92,7 @@ final class Controller implements Runnable {
         } catch (ReflectiveOperationException | RuntimeException e) {
             Ln.w((injector == null ? "Control is not available: " : "No virtual keyboard; text is pasted: ") + e);
         }
+        DeviceStateWatcher state = null;
         if (injector != null) {
             final InputInjector clipboard = injector;
             try {
@@ -80,8 +100,10 @@ final class Controller implements Runnable {
             } catch (ReflectiveOperationException | RuntimeException e) {
                 Ln.w("The device's clipboard does not reach the app: " + e);
             }
+            state = DeviceStateWatcher.start(injector, writer);
         }
-        Thread thread = new Thread(new Controller(in, geometry, audio, injector, keyboard), "stormcast-control");
+        Thread thread = new Thread(new Controller(in, geometry, audio, injector, keyboard, state),
+                "stormcast-control");
         thread.setDaemon(true);
         thread.start();
     }
@@ -158,6 +180,9 @@ final class Controller implements Runnable {
                     pressPaste();
                 }
                 break;
+            case Protocol.TYPE_UNLOCK:
+                unlock(((ControlMessage.Unlock) message).code);
+                break;
             default:
                 break;
         }
@@ -231,15 +256,26 @@ final class Controller implements Runnable {
         injector.inject(keyEvent(downTime == null ? now : downTime, now, action, keycode, repeat, metaState));
     }
 
-    /** Types with the virtual keyboard's keys, and pastes what it has no keys for. */
+    /**
+     * Types with the virtual keyboard's keys, and pastes what it has no keys for. While the device
+     * is locked, the text may be its code, so nothing goes through the clipboard (B-012).
+     */
     private void type(String text) {
+        boolean locked = state != null && state.isLocked();
         StringBuilder paste = new StringBuilder();
         for (int i = 0; i < text.length(); ) {
             int codePoint = text.codePointAt(i);
             i += Character.charCount(codePoint);
             KeyEvent[] events = keysFor(codePoint);
             if (events == null) {
-                paste.appendCodePoint(codePoint);
+                if (locked) {
+                    if (!lockedPasteLogged) {
+                        lockedPasteLogged = true;
+                        Ln.w("Characters the keyboard cannot type are not pasted while the device is locked");
+                    }
+                } else {
+                    paste.appendCodePoint(codePoint);
+                }
                 continue;
             }
             paste(paste);
@@ -248,6 +284,74 @@ final class Controller implements Runnable {
             }
         }
         paste(paste);
+    }
+
+    /**
+     * Wakes the screen and opens the lock screen's code entry, then types the code and Enter, if
+     * there is a code. The code goes only as key presses: never through the clipboard, and never to
+     * the log. If the keyboard cannot type one of its characters, none of it is typed.
+     */
+    private void unlock(String code) {
+        List<KeyEvent> keys = new ArrayList<>();
+        for (int i = 0; i < code.length() && keys != null; ) {
+            int codePoint = code.codePointAt(i);
+            i += Character.charCount(codePoint);
+            KeyEvent[] events = keysFor(codePoint);
+            if (events == null) {
+                Ln.w("The unlock code has a character the device's keyboard cannot type; nothing was typed");
+                keys = null;
+            } else {
+                Collections.addAll(keys, events);
+            }
+        }
+        // The swipe must reach a lock screen that is awake, so wait for the screen to turn on.
+        boolean wasOn = injector.screenOn();
+        long now = SystemClock.uptimeMillis();
+        injector.injectAndWait(keyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_WAKEUP, 0, 0));
+        injector.injectAndWait(keyEvent(now, now, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_WAKEUP, 0, 0));
+        if (!wasOn) {
+            long end = SystemClock.uptimeMillis() + SCREEN_ON_TIMEOUT_MS;
+            while (!injector.screenOn() && SystemClock.uptimeMillis() < end) {
+                SystemClock.sleep(SCREEN_ON_POLL_MS);
+            }
+            SystemClock.sleep(SCREEN_ON_SETTLE_MS);
+        }
+        // A swipe up opens the code entry itself, as a user does. dismissKeyguard is only the
+        // fallback: on some lock screens (OnePlus with a fingerprint) it opens a fingerprint prompt
+        // with an "Enter password" button instead, and typed keys go nowhere.
+        if (!swipeUp()) {
+            injector.dismissKeyguard();
+        }
+        if (keys == null || keys.isEmpty()) {
+            return;
+        }
+        SystemClock.sleep(CODE_ENTRY_DELAY_MS);
+        for (KeyEvent event : keys) {
+            injector.inject(event);
+        }
+        key(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0, 0);
+        key(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER, 0, 0);
+    }
+
+    /**
+     * Swipes up the middle of the display, which opens the code entry on lock screens. False
+     * before the first capture session, when the display's size is not known.
+     */
+    private boolean swipeUp() {
+        Geometry current = geometry.get();
+        if (current == null) {
+            return false;
+        }
+        float x = current.displayWidth / 2f;
+        float from = current.displayHeight * 0.85f;
+        float to = current.displayHeight * 0.3f;
+        injectTouch(fingers.down(SWIPE_POINTER, x, from, 1f));
+        for (int step = 1; step < SWIPE_STEPS; step++) {
+            SystemClock.sleep(SWIPE_STEP_MS);
+            injectTouch(fingers.move(SWIPE_POINTER, x, from + (to - from) * step / SWIPE_STEPS, 1f));
+        }
+        injectTouch(fingers.up(SWIPE_POINTER, x, to, 1f));
+        return true;
     }
 
     /**

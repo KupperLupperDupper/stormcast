@@ -18,8 +18,14 @@ final class Protocol {
     static final int TYPE_AUDIO_CONFIG = 7;
     static final int TYPE_AUDIO = 8;
     static final int TYPE_AUDIO_OFF = 9;
+    static final int TYPE_DEVICE_STATE = 10;
 
     static final int FLAG_KEY_FRAME = 1;
+
+    // Device state flags (B-012).
+    static final int STATE_SCREEN_ON = 1;
+    static final int STATE_LOCKED = 2;
+    static final int STATE_NEEDS_CODE = 4;
 
     /** Audio codec: PCM, 16-bit signed little-endian, channels interleaved. */
     static final int AUDIO_CODEC_PCM_S16LE = 0;
@@ -38,12 +44,24 @@ final class Protocol {
     static final int TYPE_SCROLL = 20;
     static final int TYPE_SET_CLIPBOARD = 21;
     static final int TYPE_SET_AUDIO = 22;
+    static final int TYPE_UNLOCK = 23;
 
     /** Clipboard text in either direction, in UTF-8 bytes. */
     static final int MAX_CLIPBOARD = 256 * 1024;
+    /** An unlock code, in UTF-8 bytes. */
+    static final int MAX_UNLOCK_CODE = 256;
     /** A larger control message means a broken stream. */
     static final int MAX_CONTROL_PAYLOAD = MAX_CLIPBOARD + 1;
 
     private Protocol() {
+    }
+
+    /** Device state flags in words, for the log. */
+    static String describeState(int flags) {
+        String screen = (flags & STATE_SCREEN_ON) != 0 ? "screen on" : "screen off";
+        if ((flags & STATE_LOCKED) == 0) {
+            return screen + ", unlocked";
+        }
+        return screen + ((flags & STATE_NEEDS_CODE) != 0 ? ", locked with a code" : ", locked without a code");
     }
 }

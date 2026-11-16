@@ -38,6 +38,7 @@ const MSG_END: u8 = 4;
 const MSG_AUDIO_CONFIG: u8 = 5;
 const MSG_AUDIO: u8 = 6;
 const MSG_AUDIO_OFF: u8 = 7;
+const MSG_DEVICE_STATE: u8 = 8;
 
 /// How the server starts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -351,6 +352,11 @@ async fn forward(
                     protocol::audio_off_reason(reason)
                 );
                 send(channel, message(MSG_AUDIO_OFF, &[reason]))?;
+            }
+            protocol::TYPE_DEVICE_STATE => {
+                let flags = protocol::parse_device_state(&payload)?;
+                log::info!("device state: {}", protocol::describe_device_state(flags));
+                send(channel, message(MSG_DEVICE_STATE, &[flags]))?;
             }
             protocol::TYPE_ERROR => return Err(protocol::parse_error(&payload).into()),
             protocol::TYPE_CLIPBOARD => {

@@ -25,6 +25,12 @@ pub const TYPE_CLIPBOARD: u8 = 6;
 pub const TYPE_AUDIO_CONFIG: u8 = 7;
 pub const TYPE_AUDIO: u8 = 8;
 pub const TYPE_AUDIO_OFF: u8 = 9;
+pub const TYPE_DEVICE_STATE: u8 = 10;
+
+// Device state flags (B-012).
+const STATE_SCREEN_ON: u8 = 1;
+const STATE_LOCKED: u8 = 2;
+const STATE_NEEDS_CODE: u8 = 4;
 
 /// Audio codec: PCM, 16-bit signed little-endian, channels interleaved.
 pub const AUDIO_CODEC_PCM_S16LE: u8 = 0;
@@ -48,8 +54,11 @@ const TYPE_BUTTON: u8 = 19;
 const TYPE_SCROLL: u8 = 20;
 const TYPE_SET_CLIPBOARD: u8 = 21;
 const TYPE_SET_AUDIO: u8 = 22;
+const TYPE_UNLOCK: u8 = 23;
 /// Clipboard text in either direction, in UTF-8 bytes.
 pub const MAX_CLIPBOARD: usize = 256 * 1024;
+/// An unlock code, in UTF-8 bytes; the server refuses longer ones.
+const MAX_UNLOCK_CODE: usize = 256;
 /// The server refuses larger control messages.
 const MAX_CONTROL_PAYLOAD: usize = MAX_CLIPBOARD + 1;
 /// Android's `KeyEvent.KEYCODE_PASTE`.
@@ -202,6 +211,40 @@ pub fn audio_off_reason(reason: u8) -> &'static str {
     }
 }
 
+/// Whether the screen is on and the device locked: `STATE_*` flags (B-012).
+pub fn parse_device_state(payload: &[u8]) -> Result<u8, AppError> {
+    payload
+        .first()
+        .copied()
+        .ok_or_else(|| too_short("device state"))
+}
+
+/// A device state in words, for the log.
+pub fn describe_device_state(flags: u8) -> String {
+    let screen = if flags & STATE_SCREEN_ON != 0 {
+        "screen on"
+    } else {
+        "screen off"
+    };
+    let lock = match (flags & STATE_LOCKED != 0, flags & STATE_NEEDS_CODE != 0) {
+        (false, _) => "unlocked",
+        (true, true) => "locked with a code",
+        (true, false) => "locked without a code",
+    };
+    format!("{screen}, {lock}")
+}
+
+/// A device's unlock code. Debug never shows it, so no log line can.
+#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[serde(transparent)]
+pub struct Secret(String);
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(hidden)")
+    }
+}
+
 /// The server's last message before it stops.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ServerError {
@@ -279,6 +322,11 @@ pub enum Control {
     /// Starts or stops audio capture on the device.
     Audio {
         on: bool,
+    },
+    /// Wakes the screen, opens the lock screen's code entry and types `code` there with Enter,
+    /// unless it is empty (B-012).
+    Unlock {
+        code: Secret,
     },
 }
 
@@ -380,6 +428,17 @@ impl Control {
             Self::Audio { on } => {
                 put_header(out, TYPE_SET_AUDIO, 1);
                 out.push(u8::from(*on));
+            }
+            Self::Unlock { code } => {
+                let code = code.0.as_bytes();
+                if code.len() > MAX_UNLOCK_CODE {
+                    return Err(AppError::new(
+                        "bad_control",
+                        format!("unlock code of {} bytes", code.len()),
+                    ));
+                }
+                put_header(out, TYPE_UNLOCK, code.len());
+                out.extend_from_slice(code);
             }
             Self::Paste => {
                 return Err(AppError::new(
@@ -642,6 +701,12 @@ mod tests {
             ("set_audio_on", Control::Audio { on: true }),
             ("set_audio_off", Control::Audio { on: false }),
             (
+                "unlock",
+                Control::Unlock {
+                    code: Secret("1234".into()),
+                },
+            ),
+            (
                 "scroll",
                 Control::Scroll {
                     x: 600,
@@ -726,6 +791,46 @@ mod tests {
             "clipboard_too_large"
         );
         assert!(Control::Paste.encode(&mut Vec::new()).is_err());
+    }
+
+    #[test]
+    fn decodes_the_device_state() {
+        let (header, payload) = message("device_state");
+        assert_eq!(header.kind, TYPE_DEVICE_STATE);
+        let flags = parse_device_state(&payload).unwrap();
+        assert_eq!(flags, STATE_SCREEN_ON | STATE_LOCKED | STATE_NEEDS_CODE);
+        assert_eq!(
+            describe_device_state(flags),
+            "screen on, locked with a code"
+        );
+        assert_eq!(
+            describe_device_state(STATE_LOCKED),
+            "screen off, locked without a code"
+        );
+        assert_eq!(
+            describe_device_state(STATE_SCREEN_ON),
+            "screen on, unlocked"
+        );
+        assert!(parse_device_state(&[]).is_err());
+    }
+
+    #[test]
+    fn keeps_the_unlock_code_secret() {
+        let unlock: Control = serde_json::from_str(r#"{"type":"unlock","code":"4711"}"#).unwrap();
+        assert_eq!(
+            unlock,
+            Control::Unlock {
+                code: Secret("4711".into())
+            }
+        );
+        assert!(!format!("{unlock:?}").contains("4711"));
+        let long = Control::Unlock {
+            code: Secret("1".repeat(MAX_UNLOCK_CODE + 1)),
+        };
+        assert_eq!(
+            long.encode(&mut Vec::new()).unwrap_err().code,
+            "bad_control"
+        );
     }
 
     #[test]

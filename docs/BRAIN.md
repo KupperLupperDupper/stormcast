@@ -17,6 +17,7 @@ The Java code is in `server/src/main/java/com/stormitron/stormcast/server/`; the
 | change the protocol | [PROTOCOL.md](PROTOCOL.md), `protocol/vectors.txt`, `Protocol.java` and `src-tauri/src/protocol.rs`, all in the same commit |
 | capture screen, input, clipboard or sound on the device | `DisplayCapture.java`, `InputInjector.java` and `AudioCapture.java`: the only files with hidden Android APIs |
 | turn the app's control messages into input on the device | `Controller.java` |
+| tell the app the lock state, or unlock the device with its code (B-012) | `DeviceStateWatcher.java` and `Controller.unlock`; the web UI's row is `lockForm` in `src/main.ts` |
 | send the sound and give it PTS on the picture's clock | `AudioStreamer.java` and `AudioTiming.java` |
 | run a session: adb push, reverse tunnel, server start and video to the web UI | `src-tauri/src/mirror.rs`; the message format to the web UI is shared with `src/player.ts` |
 | change the H.264 setup or the decoder's reordering | `src-tauri/src/h264.rs` |
@@ -41,3 +42,5 @@ The Java code is in `server/src/main/java/com/stormitron/stormcast/server/`; the
 ## Gotchas
 - The Java code is Java 8 syntax without libraries, but is built with JDK 17+.
 - CI runs the same checks as above (`.github/workflows/ci.yml`).
+- A lock screen with a code is black in the mirror. Open its code entry with a swipe up: `dismissKeyguard` gives a fingerprint prompt on some phones (OnePlus), where typed keys go nowhere.
+- Only one `npm run tauri dev` can run at a time; stop the old one first. Its `adb shell` for the server can outlive it.

@@ -45,6 +45,11 @@ const SMOKE_TOGGLE_MS = 3000;
 const SYNC_AHEAD_MS = 45;
 const SYNC_BEHIND_MS = 125;
 const SOUND_KEY = "stormcast.soundOnPc";
+// Device state flags from the server (B-012); bit 0, screen on, is not needed here.
+const STATE_LOCKED = 2;
+const STATE_NEEDS_CODE = 4;
+/** After an unlock with a code, this long until a device that is still locked counts as a wrong code. */
+const UNLOCK_CHECK_MS = 4000;
 
 const deviceList = byId("device-list");
 const stage = byId("stage");
@@ -59,6 +64,10 @@ let control: DeviceControl | null = null;
 let session = 0;
 let statusText: HTMLElement | null = null;
 let soundButton: HTMLButtonElement | null = null;
+/** The device's lock state, or null while it is unknown (B-012). */
+let deviceState: number | null = null;
+let lockRow: HTMLFormElement | null = null;
+let unlockCheck = 0;
 /** Play the device's sound on this PC; remembered between sessions. */
 let soundOnPc = loadSoundSetting();
 let smoke: "off" | "waiting" | "running" | "done" = "off";
@@ -187,6 +196,11 @@ async function connect(serial: string) {
         if (id !== session) return;
         failSession(serial, error);
       },
+      deviceState: (flags) => {
+        if (id !== session) return;
+        deviceState = flags;
+        renderLock();
+      },
     },
     audio,
   );
@@ -217,6 +231,9 @@ function endSession() {
   control = null;
   statusText = null;
   soundButton = null;
+  deviceState = null;
+  lockRow = null;
+  window.clearTimeout(unlockCheck);
 }
 
 function failSession(serial: string, error: AppError) {
@@ -243,7 +260,9 @@ function renderStage() {
   hideTooltip();
   statusText = null;
   soundButton = null;
+  lockRow = null;
   stage.replaceChildren(stageContent());
+  renderLock();
   if (hadFocus) {
     // A11Y-09: the focused element is gone, so move focus on purpose. When mirroring starts,
     // that is the screen, ready for the keyboard.
@@ -333,10 +352,83 @@ function mirrorView(deviceName: string): Node {
         h("span", { class: "control-hint__idle" }, text.controlHint),
         h("span", { class: "control-hint__active", id: "control-hint-active" }, text.controlHintActive),
       ),
+      lockForm(),
     ),
     // The mirrored screen never sits under glass or any other layer.
     h("div", { class: "screen" }, player?.canvas ?? null),
   );
+}
+
+/**
+ * B-012: one compact row with a field for the device's code, shown only while the device is
+ * locked with a code. The mirror shows such a lock screen black, so this is where the code goes;
+ * a lock without a code shows in the mirror and needs only Power and a swipe. The field is
+ * cleared at once, and the code is never stored.
+ */
+function lockForm(): HTMLFormElement {
+  lockRow = h(
+    "form",
+    { class: "lock", hidden: true, onsubmit: submitUnlock },
+    h("label", { class: "text-label", for: "unlock-code" }, text.lock.codeLabel),
+    h("input", {
+      class: "field",
+      id: "unlock-code",
+      name: "unlock-code",
+      type: "password",
+      autocomplete: "off",
+      spellcheck: "false",
+      autocapitalize: "off",
+      "aria-describedby": "lock-note",
+    }),
+    h("button", { class: "button button--primary", type: "submit" }, text.lock.unlock),
+    h("p", { class: "lock__note", id: "lock-note", role: "status" }),
+  );
+  return lockRow;
+}
+
+function renderLock() {
+  const row = lockRow;
+  if (!row) return;
+  const flags = deviceState ?? 0;
+  const show = (flags & STATE_LOCKED) !== 0 && (flags & STATE_NEEDS_CODE) !== 0;
+  const input = row.querySelector<HTMLInputElement>("#unlock-code");
+  if (!show) {
+    window.clearTimeout(unlockCheck);
+    const hadFocus = row.contains(document.activeElement);
+    row.hidden = true;
+    if (input) input.value = "";
+    setLockNote("");
+    // A11Y-09: the focused field is gone, so the screen takes over, ready for the keyboard.
+    if (hadFocus) player?.canvas.focus({ preventScroll: true });
+    return;
+  }
+  if (!row.hidden) return;
+  row.hidden = false;
+  announce(text.lock.announce);
+  // The field is the clear place for the code; take focus only from the screen or nowhere.
+  const active = document.activeElement;
+  if (active === document.body || active === player?.canvas) input?.focus();
+}
+
+function setLockNote(note: string) {
+  const element = lockRow?.querySelector<HTMLElement>(".lock__note");
+  if (element) element.textContent = note;
+}
+
+function submitUnlock(event: Event) {
+  event.preventDefault();
+  const input = lockRow?.querySelector<HTMLInputElement>("#unlock-code");
+  const code = input?.value ?? "";
+  if (input) input.value = "";
+  setLockNote("");
+  control?.unlock(code);
+  window.clearTimeout(unlockCheck);
+  if (!code) return;
+  unlockCheck = window.setTimeout(() => {
+    if (deviceState === null || (deviceState & STATE_LOCKED) === 0) return;
+    setLockNote(text.lock.stillLocked);
+    input?.focus();
+  }, UNLOCK_CHECK_MS);
 }
 
 /**

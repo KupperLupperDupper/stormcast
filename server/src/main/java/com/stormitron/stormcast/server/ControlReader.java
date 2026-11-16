@@ -64,6 +64,11 @@ final class ControlReader {
                             new String(payload, 1, payload.length - 1, StandardCharsets.UTF_8));
                 case Protocol.TYPE_SET_AUDIO:
                     return new ControlMessage.Audio(data.get() != 0);
+                case Protocol.TYPE_UNLOCK:
+                    if (payload.length > Protocol.MAX_UNLOCK_CODE) {
+                        throw new IllegalArgumentException("unlock code of " + payload.length + " bytes");
+                    }
+                    return new ControlMessage.Unlock(new String(payload, StandardCharsets.UTF_8));
                 default:
                     return null;
             }
