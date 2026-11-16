@@ -106,6 +106,11 @@ export const text = {
   recentApps: "Recent apps",
   power: "Power",
   soundOnPc: "Sound on this PC",
+  /** B-003: a toggle with a fixed name; F11 does the same. */
+  fullScreen: "Full screen",
+  fullScreenTooltip: "Full screen (F11)",
+  announceFullScreen: "Full screen. Press F11 to leave it.",
+  announceWindowed: "Full screen off",
   soundUnsupportedLabel: "Sound on this PC needs Android 12 or newer on the device",
   /** Shown in the status line, and announced, when the device sends no sound. */
   soundNote: (state: string): string | null => soundNotes[state] ?? null,

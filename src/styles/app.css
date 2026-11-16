@@ -85,6 +85,18 @@ ol {
   }
 }
 
+/* B-003: full screen is the picture with its toolbar; the device list comes back when it ends. */
+:root[data-full-screen] .app {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: var(--full-screen-padding);
+}
+
+:root[data-full-screen] .sidebar {
+  display: none;
+}
+
 .panel {
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-panel);

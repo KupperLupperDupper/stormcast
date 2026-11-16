@@ -12,7 +12,7 @@ let tip: HTMLElement | null = null;
 let owner: HTMLElement | null = null;
 let timer = 0;
 
-/** Gives the button a tooltip with its aria-label. */
+/** Gives the button a tooltip with its aria-label, or its data-tooltip when it has one. */
 export function withTooltip<T extends HTMLElement>(trigger: T): T {
   trigger.addEventListener("pointerenter", (event) => {
     if (event.pointerType !== "mouse") return;
@@ -41,7 +41,8 @@ export function hideTooltip(trigger?: HTMLElement): void {
 function show(trigger: HTMLElement) {
   if (!trigger.isConnected) return;
   tip ??= createTip();
-  tip.textContent = trigger.getAttribute("aria-label");
+  // data-tooltip adds to the name, for example the shortcut; it starts with the name (TXT-07).
+  tip.textContent = trigger.dataset.tooltip ?? trigger.getAttribute("aria-label");
   tip.hidden = false;
   owner = trigger;
   place(tip, trigger);

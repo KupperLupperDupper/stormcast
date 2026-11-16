@@ -6,7 +6,7 @@ import type { DeviceButton } from "./ipc";
 
 const SVG = "http://www.w3.org/2000/svg";
 
-export type IconName = DeviceButton | "soundOn" | "soundOff";
+export type IconName = DeviceButton | "soundOn" | "soundOff" | "fullScreen" | "exitFullScreen";
 
 /** A speaker. */
 const SPEAKER = "M4 9.5h3.5L12 5.5v13l-4.5-4H4z";
@@ -21,6 +21,9 @@ const shapes: Record<IconName, string[]> = {
   // Sound on the PC: a speaker with sound waves; off: a speaker with a cross.
   soundOn: [SPEAKER, "M15.5 9a4 4 0 0 1 0 6", "M18.5 6.5a7.5 7.5 0 0 1 0 11"],
   soundOff: [SPEAKER, "M16 9.5l5 5", "M21 9.5l-5 5"],
+  // Full screen: four corners pointing out; leaving it: the same corners pointing in.
+  fullScreen: ["M4 9V4h5", "M15 4h5v5", "M20 15v5h-5", "M9 20H4v-5"],
+  exitFullScreen: ["M9 4v5H4", "M20 9h-5V4", "M15 20v-5h5", "M4 15h5v5"],
 };
 
 /** A decorative icon: the button around it carries the name. */

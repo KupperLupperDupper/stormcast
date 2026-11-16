@@ -15,7 +15,7 @@ The queue across sessions (PRJ-04): one table per lane (swimlane), and every ite
 ## Lane: Mirroring
 | ID | Item | Status | Note |
 |---|---|---|---|
-| B-003 | Full-screen view of the phone picture | Idea | The branch `claude/fullscreen-view-10afda` exists but has no commits of its own |
+| B-003 | Full-screen view of the phone picture | Done (2026-11-16) | A toggle and F11; Windows full screen without the sidebar, the toolbar stays above the picture. Checked at 1920 × 1080 and by hand |
 | B-004 | Wireless connection without a USB cable | Idea | The README calls it planned |
 | B-007 | Show several devices at once | Idea | Done when two connected devices are mirrored and controlled at the same time |
 | B-008 | Diagnostics about the device | Idea | For example model, Android version, resolution, battery and connection state |

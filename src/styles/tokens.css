@@ -188,6 +188,7 @@
 /* ---------- Layer 3: component tokens ---------- */
 :root {
   --layout-gap: var(--space-s);
+  --full-screen-padding: var(--space-xs);
   --sidebar-width: 18rem;
   --sidebar-max-height-stacked: 40vh;
   --brand-mark-size: 2.5rem;
