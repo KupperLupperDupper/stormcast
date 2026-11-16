@@ -31,6 +31,7 @@ docs/        BRAIN, BACKLOG, LOG, ARCHITECTURE, DECISIONS, PROTOCOL and DESIGN-B
 - **Picture:** the screen → the device's hardware encoder → H.264 without B-frames → the protocol over USB → WebCodecs on the graphics card → canvas, where the newest frame wins.
 - **Sound:** what the device plays → 48 kHz stereo PCM with PTS on the picture's clock (ADR-004) → Web Audio, scheduled a few tens of milliseconds ahead.
 - **Input and clipboard:** the web UI → control messages → Rust encodes them → the server injects them. Text copied on the device comes back to the PC's clipboard (at most 256 KiB).
+- **Lock state and unlocking (B-012):** `DeviceStateWatcher.java` polls whether the screen is on and the device locked and sends it when it changes. A lock screen with a code shows black in the mirror, so the web UI asks for the code, and the server wakes the screen, swipes up and types the code as key presses, never through the clipboard or the log.
 - **The protocol** is version 3 and described in [PROTOCOL.md](PROTOCOL.md): every message is type, length and payload, and unknown types are skipped.
 - Nothing is stored on the device. The app remembers whether sound plays on the PC.
 

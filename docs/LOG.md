@@ -2,6 +2,13 @@
 
 What happened, why and what is next (PRJ-05). Newest first, one entry per stretch of work and at most about 10 lines. Only what git does not show; name IDs from the backlog and the decisions and the commits concerned. If work stops before the queue is empty, the entry is the handover (PRM-02).
 
+## 2026-11-16 · Picture fits the view, unlock from the PC
+- **Done:** B-011 (the picture fills the view, also above its own size) and B-012 (lock state and unlock with a code, protocol types 10 and 23).
+- **Why:** a lock screen with a code is black in the mirror (non-secure display on Android 12+), so the user could not see where to type.
+- **Found on the device:** `dismissKeyguard` opened OnePlus' fingerprint prompt, whose "Enter password" button must be pressed before keys reach the code entry; a swipe up opens the entry itself, also 0.2 s after waking. The server now swipes and keeps `dismissKeyguard` as the fallback.
+- **Not checked:** a password with letters, a pattern lock (the row says to draw it on the device), and lock screens of other makers.
+- **Next:** B-005, or B-003 on top of B-011.
+
 ## 2026-11-15 · Security findings fixed before release
 - **Done:** B-013. Profiles checked: baseline, packages (npm, Cargo), CI, apps. Not applicable: web and API, login and data, AI.
 - **Not checked:** gitleaks is not installed, so SEC-01 was checked by regex only. cargo audit first runs in CI, on the new "Dependency audit" job.

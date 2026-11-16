@@ -112,6 +112,15 @@ export const text = {
   controlHint: "Click or tap the screen to control the device.",
   controlHintActive: "Keyboard input goes to the device. Press Tab to leave the screen.",
 
+  /** B-012: the device's lock state. Its lock screen shows black in the mirror. */
+  lock: {
+    /** Announced when the field appears: the lock screen itself stays dark in the mirror. */
+    announce: "The device is locked. Enter its PIN or password to unlock it.",
+    codeLabel: "Device locked: PIN or password",
+    unlock: "Unlock",
+    stillLocked: "Still locked. Check the code and try again. A pattern must be drawn on the device.",
+  },
+
   connecting: (name: string) => `Starting mirroring on ${name}…`,
   connectingSlow: "The first start can take a few seconds while the device prepares its video encoder.",
   status: (width: number, height: number, fps: number) => `${width} × ${height} · ${fps} fps`,

@@ -204,6 +204,13 @@
   --button-border: var(--color-border-strong);
   --press-scale: 0.98;
 
+  /* B-012: the unlock code's field, as tall as a button (CMP-02). */
+  --field-height: var(--button-height);
+  --field-width: 12rem;
+  --field-bg: var(--color-surface);
+  --field-fg: var(--color-text);
+  --field-border: var(--color-border-strong);
+
   --progress-height: 0.25rem;
   --progress-indicator-width: 40%;
   --progress-from: -100%;

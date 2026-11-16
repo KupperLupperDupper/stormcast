@@ -44,6 +44,7 @@ All integers are big-endian. `f32` is an IEEE 754 single. Every message is `u8 t
 | 7 | audio config | `u8 codec` (0: PCM, 16-bit signed little-endian, channels interleaved), `u32 sample rate`, `u8 channels`. Audio capture started; comes before its first audio message. |
 | 8 | audio | `u64 pts` in microseconds, then the samples. |
 | 9 | audio off | `u8 reason`: 0 the app turned audio off, 1 the device's Android is older than 12, 2 the device did not allow capture, 3 capture failed. Audio capture stopped. |
+| 10 | device state | `u8 flags`: bit 0 the screen is on, bit 1 the device is locked, bit 2 unlocking needs a code (PIN, password or pattern). Sent when it changes, the first time soon after hello. A server that cannot read the state sends none. |
 
 A payload is at most 64 MiB; a larger length means a broken stream.
 
@@ -64,12 +65,14 @@ No preamble: the version was checked when the server started. The server injects
 | 20 | scroll | `u16 x`, `u16 y`, `u16 width`, `u16 height`, `f32 horizontal`, `f32 vertical`. |
 | 21 | set clipboard | `u8 paste` (0 or 1), then UTF-8 text. Puts the text on the device's clipboard, and with paste 1 also pastes it. |
 | 22 | audio | `u8 on` (0 or 1): starts or stops audio capture. The server answers with audio config or audio off. |
+| 23 | unlock | UTF-8 code, at most 256 bytes, or nothing. Wakes the screen and opens the lock screen's code entry, then, if there is a code, types it and presses Enter. |
 
 - **Positions** are pixels on the video: `x` and `y` on a video of `width` × `height`, the size in the current session message. The server scales them to the display. A position for another size was made before the display rotated, so the server drops it; an up or cancel then cancels the touch, so no finger stays down.
 - **Touch:** `pointer` is the app's own id for a finger, the mouse or a pen. Up to 10 can be down at once. Cancel ends them all. A down for a pointer that is already down means its up was lost, so the server cancels the old touch before the new one starts.
 - **Key:** `keycode` and `meta state` are Android's `KeyEvent.KEYCODE_*` and `META_*` values. `repeat` counts auto-repeat and is 0 on the first down.
 - **Text:** typed with the keys of the device's virtual keyboard, accented letters as a dead key and a letter. Characters it has no keys for, such as æ, ø, å and emoji, are pasted through the device's clipboard, which then holds them.
 - **Scroll:** in wheel notches, positive to the right and up, like Android's `AXIS_HSCROLL` and `AXIS_VSCROLL`.
+- **Locked device:** a secure lock screen shows black in the video, so the app takes the code itself and sends it in an unlock message. The server types the code with key presses only, never through the clipboard, and never logs it; if the keyboard cannot type one of its characters, it types none of them. While the device is locked, text messages do not paste the characters the keyboard cannot type either, because the text may be the code.
 - **Clipboard:** text only, at most 256 KiB of UTF-8, both ways. Because the server sends only changes it did not make, text from the app or from pasted characters never comes back.
 
 A payload is at most 256 KiB and one byte; a larger length means a broken stream.

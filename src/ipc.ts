@@ -54,7 +54,9 @@ export type ControlMessage =
   /** Ctrl+V: the app pastes the PC's clipboard text on the device. */
   | { type: "paste" }
   /** Starts or stops sound capture on the device. */
-  | { type: "audio"; on: boolean };
+  | { type: "audio"; on: boolean }
+  /** Wakes the screen, opens the lock screen's code entry and types the code there with Enter (B-012). */
+  | { type: "unlock"; code: string };
 
 export const getStartup = () => invoke<Startup>("get_startup");
 export const listDevices = () => invoke<Device[]>("list_devices");

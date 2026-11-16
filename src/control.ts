@@ -113,6 +113,14 @@ export class DeviceControl {
     this.send({ type: "audio", on });
   }
 
+  /**
+   * Wakes the device and opens its code entry, and types the code there, if any (B-012). The
+   * code goes only to the device: it is not kept or logged.
+   */
+  unlock(code: string): void {
+    this.send({ type: "unlock", code });
+  }
+
   /** Stops sending: the session is over. */
   close(): void {
     this.closed = true;

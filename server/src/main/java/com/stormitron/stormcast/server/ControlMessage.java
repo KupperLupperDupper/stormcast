@@ -189,6 +189,29 @@ abstract class ControlMessage {
         }
     }
 
+    /**
+     * Wakes the screen, shows the lock screen's code entry and types the code there, if any.
+     * The code is a secret: toString and the log never show it, only its length.
+     */
+    static final class Unlock extends ControlMessage {
+        final String code;
+
+        Unlock(String code) {
+            super(Protocol.TYPE_UNLOCK);
+            this.code = code;
+        }
+
+        @Override
+        String name() {
+            return "unlock";
+        }
+
+        @Override
+        public String toString() {
+            return "unlock with a code of " + code.codePointCount(0, code.length()) + " characters";
+        }
+    }
+
     /** Wheel notches, positive to the right and up. */
     static final class Scroll extends Positioned {
         final float horizontal;

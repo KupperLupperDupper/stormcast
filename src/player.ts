@@ -9,6 +9,7 @@
  *   3 frame    u8 flags (bit 0: key frame), u64 PTS in µs, data
  *   4 end      JSON { code, detail }
  *   5–7        audio, see src/audio.ts
+ *   8 device state  u8 flags: 1 screen on, 2 locked, 4 unlocking needs a code (B-012)
  */
 
 import { AudioPlayer, median, type AudioStats } from "./audio";
@@ -21,6 +22,7 @@ const MSG_END = 4;
 const MSG_AUDIO_CONFIG = 5;
 const MSG_AUDIO = 6;
 const MSG_AUDIO_OFF = 7;
+const MSG_DEVICE_STATE = 8;
 /** Drawn frames kept for the picture's timing. */
 const TIMING_KEPT = 120;
 /** Samples both sides need before the offset between sound and picture is reported. */
@@ -54,6 +56,8 @@ export interface PlayerStats {
 export interface PlayerEvents {
   hello(deviceName: string): void;
   end(error: { code: string; detail: string }): void;
+  /** Whether the screen is on and the device locked, as flags; see the message layout above. */
+  deviceState(flags: number): void;
 }
 
 export class MirrorPlayer {
@@ -120,6 +124,9 @@ export class MirrorPlayer {
       case MSG_AUDIO_OFF:
         this.audio.off(bytes[1]);
         break;
+      case MSG_DEVICE_STATE:
+        this.events.deviceState(bytes[1]);
+        break;
       case MSG_END:
         this.events.end(JSON.parse(this.utf8.decode(bytes.subarray(1))));
         break;
@@ -184,10 +191,15 @@ export class MirrorPlayer {
     return Math.round((median(audio) ?? 0) - (median(this.drawnMinusPts) ?? 0));
   }
 
-  /** Sizes the canvas before the first frame, so the layout does not jump (LAY-02). */
+  /**
+   * Sizes the canvas before the first frame, so the layout does not jump (LAY-02), and tells the
+   * CSS the picture's aspect ratio, so it fits the view (B-011).
+   */
   private setSize(width: number, height: number): void {
-    if (this.canvas.width !== width) this.canvas.width = width;
-    if (this.canvas.height !== height) this.canvas.height = height;
+    if (this.canvas.width === width && this.canvas.height === height) return;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.canvas.style.setProperty("--video-aspect", `${width} / ${height}`);
   }
 
   private configure(codec: string, config: Uint8Array): void {

@@ -46,6 +46,8 @@ public final class ProtocolTest {
         encodes(vectors, "audio_config", w -> w.writeAudioConfig(Protocol.AUDIO_CODEC_PCM_S16LE, 48000, 2));
         encodes(vectors, "audio", w -> w.writeAudio(1_234_600L, SAMPLES, 0, SAMPLES.length));
         encodes(vectors, "audio_off", w -> w.writeAudioOff(Protocol.AUDIO_OFF_UNSUPPORTED));
+        encodes(vectors, "device_state", w -> w.writeDeviceState(
+                Protocol.STATE_SCREEN_ON | Protocol.STATE_LOCKED | Protocol.STATE_NEEDS_CODE));
 
         decodes(vectors, "touch_down", "touch down pointer 1 at 600,960 on 1200x1920 pressure 1.0");
         decodes(vectors, "touch_up", "touch up pointer 4294967294 at 1199,0 on 1200x1920 pressure 0.5");
@@ -60,6 +62,15 @@ public final class ProtocolTest {
         decodes(vectors, "set_clipboard", "set clipboard and paste \"Hej på dig\"");
         decodes(vectors, "set_audio_on", "audio on");
         decodes(vectors, "set_audio_off", "audio off");
+        // The code itself never shows, only its length.
+        decodes(vectors, "unlock", "unlock with a code of 4 characters");
+        check("an over-long unlock code is skipped",
+                ControlReader.parse(Protocol.TYPE_UNLOCK, new byte[Protocol.MAX_UNLOCK_CODE + 1]) == null);
+        check("device states read in words",
+                Protocol.describeState(Protocol.STATE_SCREEN_ON).equals("screen on, unlocked")
+                && Protocol.describeState(Protocol.STATE_LOCKED).equals("screen off, locked without a code")
+                && Protocol.describeState(Protocol.STATE_SCREEN_ON | Protocol.STATE_LOCKED | Protocol.STATE_NEEDS_CODE)
+                        .equals("screen on, locked with a code"));
         readsControlStreams(unhex(vectors.get("button_home")));
         tracksFingers();
         timesAudio();

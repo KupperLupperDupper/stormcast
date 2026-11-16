@@ -83,6 +83,12 @@ final class MessageWriter {
         out.writeByte(reason);
     }
 
+    /** Protocol.STATE_* flags: screen on, locked, and whether unlocking needs a code. */
+    synchronized void writeDeviceState(int flags) throws IOException {
+        header(Protocol.TYPE_DEVICE_STATE, 1);
+        out.writeByte(flags);
+    }
+
     synchronized void flush() throws IOException {
         out.flush();
     }

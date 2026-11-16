@@ -43,7 +43,7 @@ The numbers apply to the solid skin and are checked by `npm run check:contrast` 
 Short sentences without exclamation marks. Buttons say the action: "Mirror screen", "Stop mirroring", "Try again". Errors say what happened and what to do now.
 
 ## Special requirements
-- The phone picture is shown at its own resolution, scaled to the space, and nothing lies on top of it.
+- The phone picture fills as much of its space as it can, scaled up or down with its aspect ratio kept, never cropped or distorted, and nothing lies on top of it (B-011). The canvas box is exactly the picture, so pointer positions map straight onto it.
 - Buttons are 40 px high with a 48 px hit area (CMP-02).
 - Low latency: hardware decoding, and the newest frame wins.
 - Sound: the device's sound plays on the PC as uncompressed PCM, with only a few blocks scheduled ahead. The sound may be at most about 45 ms ahead of the picture and 125 ms behind (ITU-R BT.1359, the detectability threshold), and the smoke test measures it from both sides' PTS on the device's clock. The picture never waits for the sound, so control stays fast.
@@ -52,6 +52,7 @@ Short sentences without exclamation marks. Buttons say the action: "Mirror scree
 - Input is sent at once and in order, without debounce (PERF-05). The screen passes every finger on, so the device itself decides pinches and other gestures; GES-05's "ignore extra fingers" applies to our own gestures, and the screen has none.
 - Back, Home, Recent apps and Power are icon buttons in the toolbar with Android's own symbols (GES-06). The name is in `aria-label` and in a tooltip on hover and keyboard focus (CMP-14, A11Y-05). The tooltip has a solid surface, so it is never glass on glass, and it never covers the phone picture. "Stop mirroring" is text, because it is Stormcast's own action, and a stop icon would look like Recent apps.
 - Clipboard: what is copied on the device lands in the PC's clipboard by itself, and Ctrl+V on the screen pastes the PC's text on the device. Text only, and the content is never logged.
+- Locked device (B-012): a lock screen with a code shows black in the mirror, so the toolbar gets one extra row, "Device locked: PIN or password", with a password field and Unlock. Only while the device is locked with a code; a lock without a code shows in the mirror. The row is part of the toolbar, never on the picture. The field takes focus when it appears, if focus was on the screen or nowhere, is cleared on submit, and the code is never stored or logged. A device still locked four seconds later gets an error line in text (CMP-07), which also says that a pattern must be drawn on the device.
 - Right-click is Back, as with a mouse on Android itself (GES-07). A mouse click on the device buttons does not move focus away from the screen, so you can keep typing.
 
 ## Deviations (KIT-04)
