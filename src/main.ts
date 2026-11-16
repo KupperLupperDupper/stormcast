@@ -286,6 +286,7 @@ function updateSound() {
 function renderStage() {
   const hadFocus = stage.contains(document.activeElement) ? document.activeElement : null;
   hideTooltip();
+  document.documentElement.toggleAttribute("data-mirroring", sessions.size > 0);
   stage.replaceChildren(sessions.size === 0 ? noticeContent() : mirrorsContent());
   if (!hadFocus) return;
   if (hadFocus.isConnected) {
@@ -426,7 +427,7 @@ function layoutToggle() {
     h(
       "button",
       {
-        class: "button button--secondary button--icon",
+        class: "button button--ghost button--icon",
         type: "button",
         "aria-label": text.showAll,
         "aria-pressed": String(layout === "all"),
@@ -447,15 +448,15 @@ function layoutToggle() {
 
 /**
  * Full screen, a toggle with a fixed name and aria-pressed; the icon shows the state too
- * (CMP-15). F11 does the same. The tab bar and toolbars stay above the pictures, so nothing lies
- * on them.
+ * (CMP-15). F11 does the same. The tab bar and the cards' headers stay above the pictures, so
+ * nothing lies on them.
  */
 function fullScreenToggle() {
   return withTooltip(
     h(
       "button",
       {
-        class: "button button--secondary button--icon",
+        class: "button button--ghost button--icon",
         type: "button",
         "aria-label": text.fullScreen,
         "aria-pressed": String(fullScreen),

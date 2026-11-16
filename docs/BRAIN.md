@@ -20,7 +20,7 @@ The Java code is in `server/src/main/java/com/stormitron/stormcast/server/`; the
 | tell the app the lock state, or unlock the device with its code (B-012) | `DeviceStateWatcher.java` and `Controller.unlock`; the web UI's row is `lockForm` in `src/session.ts` |
 | send the sound and give it PTS on the picture's clock | `AudioStreamer.java` and `AudioTiming.java` |
 | run a device's session: adb push, reverse tunnel, server start and video to the web UI | `src-tauri/src/mirror.rs`, one session per serial (B-007); the message format to the web UI is shared with `src/player.ts` |
-| change a mirrored device's pane: toolbar, lock row, screen, sound | `src/session.ts`, one `MirrorSession` per device |
+| change a mirrored device's card: header, lock row, screen, nav bar, sound | `src/session.ts`, one `MirrorSession` per device |
 | change the tabs, "Show all", or which device has the sound | `src/main.ts`: `setActive`, `tabBar` and `updateSound` |
 | change the H.264 setup or the decoder's reordering | `src-tauri/src/h264.rs` |
 | choose the skin (glass or solid) | `src-tauri/src/appearance.rs`: glass on Windows 11 build 22621+ with transparency turned on |

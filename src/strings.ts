@@ -123,8 +123,8 @@ export const text = {
   soundUnsupportedLabel: "Sound on this PC needs Android 12 or newer on the device",
   /** Shown in the status line, and announced, when the device sends no sound. */
   soundNote: (state: string): string | null => soundNotes[state] ?? null,
-  controlHint: "Click or tap the screen to control the device.",
-  controlHintActive: "Keyboard input goes to the device. Press Tab to leave the screen.",
+  controlHint: "Click the screen to control the device",
+  controlHintActive: "The keyboard controls the device · Tab leaves the screen",
 
   /** B-008: the device details in the sidebar. Values that are not known are left out. */
   deviceDetails: {

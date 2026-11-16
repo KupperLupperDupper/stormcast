@@ -26,8 +26,8 @@ The queue across sessions (PRJ-04): one table per lane (swimlane), and every ite
 | ID | Item | Status | Note |
 |---|---|---|---|
 | B-009 | Separate the devices into tabs | Done (2026-11-16) | A tab per mirrored device (ARIA tabs); the sound on the PC follows the device in use |
-| B-010 | Better button layout | Next | Follow the UI rulebook (CMP-02: at least 24 px with a mouse). Part of B-014 |
-| B-014 | UI overhaul | Next | A review of the whole UI against the UI rulebook, done together with B-010 and with B-009's tabs in mind |
+| B-010 | Better button layout | Done (2026-11-16) | Back, Home and Recent apps under the screen like the phone's nav bar; Power, sound and Stop in a slim header. Part of B-014 |
+| B-014 | UI overhaul | Done (2026-11-16) | One card per device, quiet buttons, pill tabs and a rounder radius scale. The first try (a rail beside the screen) was rejected as clunky and boxy. Not checked: axe-core, a screen reader |
 
 ## Lane: Release
 | ID | Item | Status | Note |

@@ -1,6 +1,6 @@
 /**
- * One mirrored device (B-007): its stream, its control, and its pane with the toolbar, the
- * lock row and the screen. Several run at once; the app (main.ts) shows them in tabs or side by
+ * One mirrored device (B-007): its stream, its control, and its card with the header, the lock
+ * row, the screen and Android's nav bar. Several run at once; the app (main.ts) shows them in tabs or side by
  * side and gives the sound on the PC to the one in use. The pane is built once and moved, never
  * rebuilt, so the canvas and what is typed in the lock field survive a change of layout.
  */
@@ -44,7 +44,7 @@ export class MirrorSession {
   private static count = 0;
 
   readonly serial: string;
-  /** The pane: a message while connecting or after an error, else the toolbar and the screen. */
+  /** The pane: a message while connecting or after an error, else the device's card. */
   readonly element: HTMLElement;
   readonly canvas: HTMLCanvasElement;
   readonly player: MirrorPlayer;
@@ -153,15 +153,14 @@ export class MirrorSession {
     if (this.phase === "mirroring") this.canvas.focus({ preventScroll: true });
   }
 
-  /** Size and frame rate, and why there is no sound, when there is none. */
+  /**
+   * Why there is no sound, when there is none. Size and frame rate are in the device details
+   * (B-008), so the card's header stays short (B-014).
+   */
   updateStatus(): void {
     if (!this.statusText) return;
-    const stats = this.player.stats();
-    const parts = [
-      stats.width > 0 ? text.status(stats.width, stats.height, stats.fps) : null,
-      this.soundOnPc ? text.soundNote(stats.audio.state) : null,
-    ];
-    this.statusText.textContent = parts.filter((part) => part !== null).join(" · ");
+    const note = this.soundOnPc ? text.soundNote(this.player.stats().audio.state) : null;
+    this.statusText.textContent = note ?? "";
   }
 
   private hello(deviceName: string) {
@@ -197,6 +196,8 @@ export class MirrorSession {
     this.soundButton = null;
     this.lockRow = null;
     this.element.classList.toggle("pane--message", this.phase !== "mirroring");
+    // Text on the glass skin always sits on a panel; the card is one panel, not many boxes.
+    this.element.classList.toggle("panel", this.phase === "mirroring");
     this.element.setAttribute("aria-label", this.title);
     if (this.phase === "connecting") {
       const title = text.connecting(this.title);
@@ -224,54 +225,64 @@ export class MirrorSession {
       );
       return;
     }
-    this.statusText = h("span", { class: "toolbar__status" });
+    // B-010, B-014: one calm card per device, laid out like the phone itself: a slim header with
+    // the name and the device's own actions, the screen, and Android's nav bar below it.
+    this.statusText = h("span", { class: "pane__status" });
     this.element.replaceChildren(
       h(
         "div",
-        { class: "toolbar panel" },
-        h("span", { class: "toolbar__title" }, this.title),
-        this.statusText,
+        { class: "pane__header" },
+        h("span", { class: "pane__title" }, this.title),
+        // Says whether the keyboard goes to the device. Both lines keep their space, so switching
+        // moves nothing (LAY-02).
         h(
-          "div",
-          { class: "toolbar__group", role: "group", "aria-label": text.deviceButtons },
-          this.deviceButton(text.back, "back"),
-          this.deviceButton(text.home, "home"),
-          this.deviceButton(text.recentApps, "recentApps"),
-          this.deviceButton(text.power, "power"),
-        ),
-        this.soundToggle(),
-        button(text.stop, () => this.host.close(this)),
-        // Says whether the keyboard goes to the device. Both lines keep their space, so
-        // switching moves nothing (LAY-02).
-        h(
-          "p",
+          "span",
           { class: "control-hint" },
           h("span", { class: "control-hint__idle" }, text.controlHint),
           h("span", { class: "control-hint__active", id: this.id("hint") }, text.controlHintActive),
         ),
-        this.lockForm(),
+        this.statusText,
+        h(
+          "div",
+          { class: "pane__actions" },
+          this.soundToggle(),
+          this.iconButton(text.power, "power", () => this.control.button("power")),
+          h(
+            "button",
+            { class: "button button--ghost", type: "button", onclick: () => this.host.close(this) },
+            text.stop,
+          ),
+        ),
       ),
+      this.lockForm(),
       // The mirrored screen never sits under glass or any other layer.
       h("div", { class: "screen" }, this.canvas),
+      h(
+        "div",
+        { class: "pane__nav", role: "group", "aria-label": text.deviceButtons },
+        this.iconButton(text.back, "back", () => this.control.button("back")),
+        this.iconButton(text.home, "home", () => this.control.button("home")),
+        this.iconButton(text.recentApps, "recentApps", () => this.control.button("recentApps")),
+      ),
     );
     this.updateStatus();
     this.renderLock();
   }
 
   /**
-   * A device button with Android's own symbol; the name is in aria-label and the tooltip (CMP-14).
-   * A mouse click leaves focus on the screen, so typing can go on.
+   * A quiet icon button with Android's own symbol. The name is in aria-label and the tooltip
+   * (CMP-14). A mouse click leaves focus on the screen, so typing can go on.
    */
-  private deviceButton(label: string, which: DeviceButton) {
+  private iconButton(label: string, which: DeviceButton, onClick: () => void) {
     return withTooltip(
       h(
         "button",
         {
-          class: "button button--secondary button--icon",
+          class: "button button--ghost button--icon",
           type: "button",
           "aria-label": label,
           onmousedown: (event: Event) => event.preventDefault(),
-          onclick: () => this.control.button(which),
+          onclick: onClick,
         },
         icon(which),
       ),
@@ -287,7 +298,7 @@ export class MirrorSession {
   private soundToggle() {
     this.soundButton = withTooltip(
       h("button", {
-        class: "button button--secondary button--icon",
+        class: "button button--ghost button--icon",
         type: "button",
         onmousedown: (event: Event) => event.preventDefault(),
         onclick: () => this.toggleSound(),

@@ -83,9 +83,14 @@ ol {
   .sidebar {
     max-height: var(--sidebar-max-height-stacked);
   }
+
+  /* B-014: while mirroring, the screens need the height more than the device list does. */
+  :root[data-mirroring] .sidebar {
+    max-height: var(--sidebar-max-height-mirroring);
+  }
 }
 
-/* B-003: full screen is the picture with its toolbar; the device list comes back when it ends. */
+/* B-003: full screen is the tab bar and the panes; the device list comes back when it ends. */
 :root[data-full-screen] .app {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -301,7 +306,7 @@ ol {
   min-height: var(--button-height);
   padding: 0 var(--space-m);
   border: var(--border-width) solid var(--button-border);
-  border-radius: var(--radius-control);
+  border-radius: var(--button-radius);
   background: var(--button-bg);
   color: var(--button-fg);
   font: var(--type-body-strong);
@@ -331,6 +336,26 @@ ol {
   --button-bg: var(--color-accent);
   --button-fg: var(--color-on-accent);
   --button-border: transparent;
+}
+
+/* B-014: a quiet button for the cards and the tab bar: no fill and no border until it is
+   hovered, pressed or on (CMP-01). */
+.button--ghost {
+  --button-bg: transparent;
+  --button-border: transparent;
+  font: var(--type-body);
+}
+
+/* High contrast: system colours, so the quiet buttons and the tab line still show. */
+@media (forced-colors: active) {
+  .button--ghost {
+    --button-border: ButtonText;
+  }
+
+  .tab[aria-selected="true"],
+  .tab[aria-pressed="true"] {
+    outline: var(--border-width) solid Highlight;
+  }
 }
 
 /* Square, with the same 48 px hit area (CMP-02). The name is in aria-label and a tooltip (CMP-14). */
@@ -382,10 +407,6 @@ ol {
   transform-origin: top center;
   /* MOT-05, MOT-06: grows from the button, from 95 %. */
   animation: tooltip-in var(--motion-fast) var(--ease-out);
-}
-
-.tooltip--above {
-  transform-origin: bottom center;
 }
 
 .tooltip[hidden] {
@@ -453,7 +474,7 @@ ol {
 
 /* ---------- Mirroring ---------- */
 
-/* B-007 and B-009: the tab bar, then one pane (tabs) or every pane side by side (all). */
+/* B-007 and B-009: the tab bar, then one card (tabs) or every card side by side (all). */
 .mirrors {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -464,50 +485,55 @@ ol {
   min-height: 0;
 }
 
+/* B-014: one calm row of pills. The selected tab is filled and bold (COL-03). */
 .tab-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-s);
-  padding: var(--space-xs) var(--space-s);
+  gap: var(--space-xxs) var(--space-s);
+  padding: var(--space-xs);
+  /* A pill around pill tabs: its radius is theirs plus the padding, so they are concentric (TOK-10). */
+  border-radius: var(--radius-pill);
 }
 
 .tab-list,
 .tab-bar__tools {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-xs);
+  gap: var(--space-xxs);
   min-width: 0;
 }
 
 .tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
   min-height: var(--button-height);
   padding: 0 var(--space-m);
-  border: var(--border-width) solid transparent;
-  border-radius: var(--radius-control);
+  border: 0;
+  border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--color-text);
+  color: var(--color-text-muted);
   font: var(--type-body);
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
 }
 
 .tab:hover {
   background: var(--color-hover);
+  color: var(--color-text);
 }
 
 .tab:active {
   background: var(--color-pressed);
 }
 
-/* COL-03: the selected tab has a border and bold text, not only a colour. */
 .tab[aria-selected="true"],
 .tab[aria-pressed="true"] {
-  border-color: var(--color-accent);
   background: var(--color-selected);
+  color: var(--color-text);
   font: var(--type-body-strong);
 }
 
@@ -528,59 +554,67 @@ ol {
   grid-auto-rows: minmax(0, 1fr);
 }
 
-/* One mirrored device: its toolbar, then its screen. */
+/* B-014: one card per device, laid out like the phone: a slim header with the keyboard hint, the
+   lock row when it is needed, the screen and Android's nav bar. The rows are fixed, so the hidden
+   lock row moves nothing. */
 .pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: var(--layout-gap);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: var(--space-xs);
   min-width: 0;
   min-height: 0;
+  padding: var(--pane-padding);
+  container: pane / inline-size;
 }
 
-/* Connecting, or after an error: a message in the middle. */
+/* Connecting, or after an error: a message in the middle, without the card. */
 .pane--message {
   grid-template-rows: minmax(0, 1fr);
   place-items: center;
+  padding: 0;
 }
 
-/* Side by side, the device in use has the sound; its toolbar shows it with the accent border,
-   and its tab is selected (COL-03). */
-.pane--active > .toolbar {
-  border-color: var(--color-accent);
-}
-
-.toolbar {
+.pane__header {
   display: flex;
   flex-wrap: wrap;
+  grid-row: 1;
   align-items: center;
-  gap: var(--space-s) var(--space-m);
-  padding: var(--space-s) var(--space-m);
+  gap: var(--space-xxs) var(--space-s);
+  padding-inline-start: var(--space-xs);
 }
 
-.toolbar__title {
+.pane__title {
   font: var(--type-body-strong);
   overflow-wrap: anywhere;
 }
 
-/* TYP-05: numbers that update in place use tabular figures. */
-.toolbar__status {
-  margin-inline-start: auto;
-  color: var(--color-text-muted);
+/* Why there is no sound, when there is none. */
+.pane__status {
+  color: var(--color-attention);
   font: var(--type-caption);
-  font-variant-numeric: tabular-nums;
 }
 
-.toolbar__group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-s);
+.pane__status:empty {
+  display: none;
 }
 
+/* Takes the free space in the header, so the actions stay at the right. */
 .control-hint {
   display: grid;
-  flex-basis: 100%;
+  flex: 1 1 0;
+  min-width: 0;
   color: var(--color-text-muted);
   font: var(--type-caption);
+}
+
+/* A narrow card, side by side: the hint gets its own line under the name, instead of squeezing
+   between the name and the buttons. Container queries cannot use tokens (deviation in the design
+   brief). */
+@container pane (max-width: 34rem) {
+  .control-hint {
+    flex-basis: 100%;
+    order: 1;
+  }
 }
 
 /* Both lines share one cell, so the hint keeps the height of the longer one (LAY-02). */
@@ -594,14 +628,34 @@ ol {
   visibility: hidden;
 }
 
-/* B-012: the device's lock state, with an entry for its code. A row of the toolbar, so it never
-   lies on the picture, which the device shows black while it is locked. */
+.pane__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xxs);
+}
+
+/* Android's own nav bar, under the screen, as a soft capsule like the phone's. */
+.pane__nav {
+  display: flex;
+  grid-row: 4;
+  justify-self: center;
+  gap: var(--space-l);
+  padding: var(--space-xxs) var(--space-m);
+  border-radius: var(--radius-pill);
+  background: var(--color-hover);
+}
+
+/* B-012: the device's lock state, with an entry for its code. A row of the card above the screen,
+   so it never lies on the picture, which the device shows black while it is locked. */
 .lock {
   display: flex;
-  flex-basis: 100%;
   flex-wrap: wrap;
+  grid-row: 2;
   align-items: center;
   gap: var(--space-xs) var(--space-s);
+  padding: var(--space-xs) var(--space-s);
+  border-radius: var(--pane-inner-radius);
+  background: var(--color-selected);
 }
 
 .lock[hidden],
@@ -632,6 +686,7 @@ ol {
 /* B-011: the screen is a size container, so the picture can fill it in both directions. */
 .screen {
   display: grid;
+  grid-row: 3;
   place-items: center;
   min-width: 0;
   min-height: 0;

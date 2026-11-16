@@ -64,22 +64,37 @@ function createTip(): HTMLElement {
  * Under the button, or over it when there is no room or the mirrored screen is in the way, and
  * inside the window. The tooltip's top margin is the gap to the button.
  */
+/**
+ * Below the button, else above, else beside it, wherever it fits in the window and covers no
+ * mirrored screen (B-014).
+ */
 function place(element: HTMLElement, trigger: HTMLElement) {
   const gap = parseFloat(getComputedStyle(element).marginTop);
   const button = trigger.getBoundingClientRect();
   const { width, height } = element.getBoundingClientRect();
-  const left = Math.max(gap, Math.min(button.left + (button.width - width) / 2, window.innerWidth - width - gap));
-  const screen = document.querySelector(".screen__video")?.getBoundingClientRect();
-  const top = button.bottom + gap;
-  const blocked =
-    top + height > window.innerHeight - gap ||
-    (screen !== undefined &&
-      left < screen.right &&
-      left + width > screen.left &&
-      top < screen.bottom &&
-      top + height > screen.top);
-  const above = blocked && button.top - gap - height >= gap;
-  element.classList.toggle("tooltip--above", above);
-  element.style.left = `${left}px`;
-  element.style.top = `${above ? button.top - 2 * gap - height : button.bottom}px`;
+  const screens = [...document.querySelectorAll(".screen__video")].map((screen) => screen.getBoundingClientRect());
+  const centeredLeft = Math.max(gap, Math.min(button.left + (button.width - width) / 2, window.innerWidth - width - gap));
+  const middleTop = Math.max(gap, Math.min(button.top + (button.height - height) / 2, window.innerHeight - height - gap));
+  const spots = [
+    { left: centeredLeft, top: button.bottom + gap },
+    { left: centeredLeft, top: button.top - gap - height },
+    { left: button.left - gap - width, top: middleTop },
+    { left: button.right + gap, top: middleTop },
+  ];
+  const fits = (spot: { left: number; top: number }) =>
+    spot.left >= 0 &&
+    spot.top >= 0 &&
+    spot.left + width <= window.innerWidth &&
+    spot.top + height <= window.innerHeight &&
+    screens.every(
+      (screen) =>
+        spot.left >= screen.right ||
+        spot.left + width <= screen.left ||
+        spot.top >= screen.bottom ||
+        spot.top + height <= screen.top,
+    );
+  const spot = spots.find(fits) ?? spots[0];
+  element.style.left = `${spot.left}px`;
+  // The tooltip's top margin is the gap, and it pushes the box down by itself.
+  element.style.top = `${spot.top - gap}px`;
 }

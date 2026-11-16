@@ -2,6 +2,12 @@
 
 What happened, why and what is next (PRJ-05). Newest first, one entry per stretch of work and at most about 10 lines. Only what git does not show; name IDs from the backlog and the decisions and the commits concerned. If work stops before the queue is empty, the entry is the handover (PRM-02).
 
+## 2026-11-16 · Device details, several devices, UI overhaul
+- **Done:** B-008 (device details from one `adb shell`), B-007 and B-009 (one session per device; tabs and "Show all"), B-010 and B-014 (one card per device with a nav bar like the phone's, quiet buttons, pill tabs, radius scale 4/8/12/16/full).
+- **Why the redesign:** the first B-014 (a button rail beside the screen) gave more room on paper but was rejected as clunky, busy and boxy; the user picked the phone-like nav bar from three sketches, then asked for rounder shapes. Room for a phone at 1120 × 760: 18 % in tabs (as before), 17 % side by side (was 13 %).
+- **Not checked:** axe-core (no local copy, and a remote script was not allowed), a screen reader, and screenshots of the real window (the review used an IPC mock in the browser pane, which could not draw while Claude's window was hidden).
+- **Next:** B-005, now with all of this in Unreleased.
+
 ## 2026-11-16 · Full screen, repo cleaned
 - **Done:** B-003. Full screen hides the sidebar and keeps the toolbar as a row above the picture, because the picture must never lie under other layers. F11 stays in the app (`keepsForApp`). The window needs `core:window:allow-set-fullscreen` and `allow-is-fullscreen`.
 - **Cleaned:** the merged branches and the two old worktrees are gone; only main is left.
