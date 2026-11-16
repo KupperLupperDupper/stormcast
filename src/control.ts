@@ -262,6 +262,8 @@ export class DeviceControl {
 function keepsForApp(event: KeyboardEvent): boolean {
   if (event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey) return true;
   if (event.ctrlKey && !event.altKey && ["+", "-", "=", "0"].includes(event.key)) return true;
+  // F11 toggles the app's full screen (B-003), so it never reaches the device.
+  if (event.key === "F11") return true;
   return event.altKey && event.key === "F4";
 }
 

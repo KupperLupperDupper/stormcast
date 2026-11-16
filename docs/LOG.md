@@ -2,6 +2,11 @@
 
 What happened, why and what is next (PRJ-05). Newest first, one entry per stretch of work and at most about 10 lines. Only what git does not show; name IDs from the backlog and the decisions and the commits concerned. If work stops before the queue is empty, the entry is the handover (PRM-02).
 
+## 2026-11-16 · Full screen, repo cleaned
+- **Done:** B-003. Full screen hides the sidebar and keeps the toolbar as a row above the picture, because the picture must never lie under other layers. F11 stays in the app (`keepsForApp`). The window needs `core:window:allow-set-fullscreen` and `allow-is-fullscreen`.
+- **Cleaned:** the merged branches and the two old worktrees are gone; only main is left.
+- **Next:** B-005 (0.2.0 now has sound, unlock, the fitted picture and full screen), or B-014 with B-010.
+
 ## 2026-11-16 · Picture fits the view, unlock from the PC
 - **Done:** B-011 (the picture fills the view, also above its own size) and B-012 (lock state and unlock with a code, protocol types 10 and 23).
 - **Why:** a lock screen with a code is black in the mirror (non-secure display on Android 12+), so the user could not see where to type.

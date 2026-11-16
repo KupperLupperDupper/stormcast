@@ -1,5 +1,6 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AudioPlayer, type AudioState } from "./audio";
 import { DeviceControl } from "./control";
 import { h } from "./dom";
@@ -68,6 +69,9 @@ let soundButton: HTMLButtonElement | null = null;
 let deviceState: number | null = null;
 let lockRow: HTMLFormElement | null = null;
 let unlockCheck = 0;
+/** B-003: the window is in full screen, without the sidebar. */
+let fullScreen = false;
+let fullScreenButton: HTMLButtonElement | null = null;
 /** Play the device's sound on this PC; remembered between sessions. */
 let soundOnPc = loadSoundSetting();
 let smoke: "off" | "waiting" | "running" | "done" = "off";
@@ -234,6 +238,9 @@ function endSession() {
   deviceState = null;
   lockRow = null;
   window.clearTimeout(unlockCheck);
+  fullScreenButton = null;
+  // Full screen belongs to mirroring; the device list must be back when it ends.
+  void setFullScreen(false);
 }
 
 function failSession(serial: string, error: AppError) {
@@ -261,6 +268,7 @@ function renderStage() {
   statusText = null;
   soundButton = null;
   lockRow = null;
+  fullScreenButton = null;
   stage.replaceChildren(stageContent());
   renderLock();
   if (hadFocus) {
@@ -343,6 +351,7 @@ function mirrorView(deviceName: string): Node {
         deviceButton(text.power, "power"),
       ),
       soundToggle(),
+      fullScreenToggle(),
       button(text.stop, () => void disconnect()),
       // Says whether the keyboard goes to the device. Both lines keep their space, so
       // switching moves nothing (LAY-02).
@@ -492,6 +501,67 @@ function toggleSound() {
   control?.audio(soundOnPc);
   renderSound();
 }
+
+/**
+ * B-003: full screen, a toggle with a fixed name and aria-pressed; the icon shows the state too
+ * (CMP-15). F11 does the same. The toolbar stays above the picture, so nothing lies on it.
+ */
+function fullScreenToggle() {
+  fullScreenButton = withTooltip(
+    h("button", {
+      class: "button button--secondary button--icon",
+      type: "button",
+      "aria-label": text.fullScreen,
+      "aria-keyshortcuts": "F11",
+      "data-tooltip": text.fullScreenTooltip,
+      onmousedown: (event: Event) => event.preventDefault(),
+      onclick: () => void setFullScreen(!fullScreen),
+    }),
+  );
+  renderFullScreen();
+  return fullScreenButton;
+}
+
+function renderFullScreen() {
+  document.documentElement.toggleAttribute("data-full-screen", fullScreen);
+  if (!fullScreenButton) return;
+  fullScreenButton.setAttribute("aria-pressed", String(fullScreen));
+  fullScreenButton.replaceChildren(icon(fullScreen ? "exitFullScreen" : "fullScreen"));
+}
+
+async function setFullScreen(on: boolean) {
+  if (on === fullScreen) return;
+  fullScreen = on;
+  renderFullScreen();
+  announce(on ? text.announceFullScreen : text.announceWindowed);
+  try {
+    await getCurrentWindow().setFullscreen(on);
+  } catch (e) {
+    console.warn("Could not change full screen", e);
+  }
+}
+
+/** Follows the window when Windows leaves full screen some other way. */
+async function syncFullScreen() {
+  try {
+    const actual = await getCurrentWindow().isFullscreen();
+    if (actual !== fullScreen) {
+      fullScreen = actual;
+      renderFullScreen();
+    }
+  } catch {
+    // Not in Tauri, for example in a plain browser: nothing to follow.
+  }
+}
+
+window.addEventListener("resize", () => void syncFullScreen());
+// F11 works while mirroring, and always leaves full screen. The screen does not pass it on.
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "F11" || event.repeat) return;
+  if (view.kind !== "mirroring" && !fullScreen) return;
+  event.preventDefault();
+  void setFullScreen(!fullScreen);
+});
 
 function soundChanged(state: AudioState) {
   renderSound();
