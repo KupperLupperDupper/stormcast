@@ -466,17 +466,24 @@ ol {
   visibility: hidden;
 }
 
+/* B-011: the screen is a size container, so the picture can fill it in both directions. */
 .screen {
   display: grid;
   place-items: center;
+  min-width: 0;
   min-height: 0;
   padding: var(--space-s);
+  overflow: hidden;
+  container-type: size;
 }
 
+/* As large as the space allows without cropping or distortion, also above the video's own
+   size. The canvas box is exactly the picture, so pointer positions map straight onto it.
+   --video-aspect is width / height, set by the player; 2 is a canvas's default before it. */
 .screen__video {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  width: min(100cqw, 100cqh * var(--video-aspect, 2));
+  height: auto;
   border-radius: var(--mirror-radius);
   background: var(--mirror-bg);
   box-shadow: var(--mirror-shadow);

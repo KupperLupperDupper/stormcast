@@ -43,7 +43,7 @@ The numbers apply to the solid skin and are checked by `npm run check:contrast` 
 Short sentences without exclamation marks. Buttons say the action: "Mirror screen", "Stop mirroring", "Try again". Errors say what happened and what to do now.
 
 ## Special requirements
-- The phone picture is shown at its own resolution, scaled to the space, and nothing lies on top of it.
+- The phone picture fills as much of its space as it can, scaled up or down with its aspect ratio kept, never cropped or distorted, and nothing lies on top of it (B-011). The canvas box is exactly the picture, so pointer positions map straight onto it.
 - Buttons are 40 px high with a 48 px hit area (CMP-02).
 - Low latency: hardware decoding, and the newest frame wins.
 - Sound: the device's sound plays on the PC as uncompressed PCM, with only a few blocks scheduled ahead. The sound may be at most about 45 ms ahead of the picture and 125 ms behind (ITU-R BT.1359, the detectability threshold), and the smoke test measures it from both sides' PTS on the device's clock. The picture never waits for the sound, so control stays fast.

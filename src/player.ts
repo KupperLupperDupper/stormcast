@@ -184,10 +184,15 @@ export class MirrorPlayer {
     return Math.round((median(audio) ?? 0) - (median(this.drawnMinusPts) ?? 0));
   }
 
-  /** Sizes the canvas before the first frame, so the layout does not jump (LAY-02). */
+  /**
+   * Sizes the canvas before the first frame, so the layout does not jump (LAY-02), and tells the
+   * CSS the picture's aspect ratio, so it fits the view (B-011).
+   */
   private setSize(width: number, height: number): void {
-    if (this.canvas.width !== width) this.canvas.width = width;
-    if (this.canvas.height !== height) this.canvas.height = height;
+    if (this.canvas.width === width && this.canvas.height === height) return;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.canvas.style.setProperty("--video-aspect", `${width} / ${height}`);
   }
 
   private configure(codec: string, config: Uint8Array): void {
