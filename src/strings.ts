@@ -106,6 +106,15 @@ export const text = {
   recentApps: "Recent apps",
   power: "Power",
   soundOnPc: "Sound on this PC",
+  /** B-007 and B-009: every mirrored device has a tab; "Show all" puts them side by side. */
+  tabsLabel: "Mirrored devices",
+  tabConnecting: "Starting…",
+  tabEnded: "Stopped",
+  closeTab: "Close",
+  showAll: "Show all",
+  showAllTooltip: "Show all devices side by side",
+  announceShowAll: "All devices side by side",
+  announceTabs: "One device at a time",
   /** B-003: a toggle with a fixed name; F11 does the same. */
   fullScreen: "Full screen",
   fullScreenTooltip: "Full screen (F11)",

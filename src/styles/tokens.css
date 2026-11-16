@@ -189,6 +189,8 @@
 :root {
   --layout-gap: var(--space-s);
   --full-screen-padding: var(--space-xs);
+  /* B-007: side by side, a pane is at least this wide before the next one wraps. */
+  --pane-min-width: 22rem;
   --sidebar-width: 18rem;
   --sidebar-max-height-stacked: 40vh;
   --brand-mark-size: 2.5rem;

@@ -66,18 +66,19 @@ async fn start_mirror(
 }
 
 #[tauri::command]
-async fn stop_mirror(state: State<'_, MirrorState>) -> Result<(), AppError> {
-    state.stop().await;
+async fn stop_mirror(state: State<'_, MirrorState>, serial: String) -> Result<(), AppError> {
+    state.stop(&serial).await;
     Ok(())
 }
 
-/// The web view sends one batch at a time, so the messages reach the device in order.
+/// The web view sends one batch at a time per device, so the messages reach it in order.
 #[tauri::command]
 async fn send_control(
     state: State<'_, MirrorState>,
+    serial: String,
     messages: Vec<protocol::Control>,
 ) -> Result<(), AppError> {
-    state.send_control(messages).await
+    state.send_control(&serial, messages).await
 }
 
 #[tauri::command]

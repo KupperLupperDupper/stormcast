@@ -5,8 +5,8 @@
 use crate::adb::Adb;
 use crate::error::AppError;
 use crate::{h264, protocol};
-use std::collections::VecDeque;
 use std::collections::hash_map::RandomState;
+use std::collections::{HashMap, VecDeque};
 use std::hash::{BuildHasher, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -60,16 +60,30 @@ impl ServerOptions {
     }
 }
 
-/// The running session, if any. One device is mirrored at a time.
+/// The running sessions, one per device by serial (B-007): several devices are mirrored at once.
 #[derive(Default)]
 pub struct MirrorState {
-    task: Mutex<Option<JoinHandle<()>>>,
+    sessions: Mutex<HashMap<String, Running>>,
+}
+
+struct Running {
+    task: JoinHandle<()>,
     control: ControlLink,
 }
 
+impl Running {
+    /// Dropping the task kills the server process and closes the socket.
+    async fn stop(self) {
+        self.task.abort();
+        let _ = self.task.await;
+        self.control.detach().await;
+    }
+}
+
 impl MirrorState {
-    /// Starts a session in the background. Progress, errors and the end of the stream are
-    /// reported on the channel, so the UI can cancel at any time.
+    /// Starts a session for the device in the background, in place of one it already has.
+    /// Progress, errors and the end of the stream are reported on the channel, so the UI can
+    /// cancel at any time. Other devices' sessions go on.
     pub async fn start(
         &self,
         app: AppHandle,
@@ -77,32 +91,29 @@ impl MirrorState {
         options: ServerOptions,
         channel: Channel<Response>,
     ) {
-        let mut task = self.task.lock().await;
-        if let Some(previous) = task.take() {
-            previous.abort();
-            let _ = previous.await;
+        let mut sessions = self.sessions.lock().await;
+        if let Some(previous) = sessions.remove(&serial) {
+            previous.stop().await;
         }
-        self.control.detach().await;
-        *task = Some(tokio::spawn(run(
-            app,
-            serial,
-            options,
-            channel,
-            self.control.clone(),
-        )));
+        let control = ControlLink::default();
+        let task = tokio::spawn(run(app, serial.clone(), options, channel, control.clone()));
+        sessions.insert(serial, Running { task, control });
     }
 
-    /// Stops the session. Dropping it kills the server process and closes the socket.
-    pub async fn stop(&self) {
-        if let Some(task) = self.task.lock().await.take() {
-            task.abort();
-            let _ = task.await;
+    /// Stops the device's session, if it has one.
+    pub async fn stop(&self, serial: &str) {
+        let running = self.sessions.lock().await.remove(serial);
+        if let Some(running) = running {
+            running.stop().await;
         }
-        self.control.detach().await;
     }
 
     /// Sends control messages to the device in this order. Without a session they are dropped.
-    pub async fn send_control(&self, messages: Vec<protocol::Control>) -> Result<(), AppError> {
+    pub async fn send_control(
+        &self,
+        serial: &str,
+        messages: Vec<protocol::Control>,
+    ) -> Result<(), AppError> {
         let mut bytes = Vec::new();
         for message in messages {
             if matches!(message, protocol::Control::Paste) {
@@ -113,7 +124,16 @@ impl MirrorState {
                 message.encode(&mut bytes)?;
             }
         }
-        self.control.send(&bytes).await
+        let control = self
+            .sessions
+            .lock()
+            .await
+            .get(serial)
+            .map(|running| running.control.clone());
+        match control {
+            Some(control) => control.send(&bytes).await,
+            None => Ok(()),
+        }
     }
 }
 
@@ -242,7 +262,7 @@ async fn connect(
     ];
     args.extend(option_args.iter().map(String::as_str));
     let mut server = adb.spawn(&args)?;
-    let server_log = ServerLog::attach(&mut server);
+    let server_log = ServerLog::attach(&mut server, serial);
 
     let accepted = tokio::select! {
         accepted = tokio::time::timeout(CONNECT_TIMEOUT, listener.accept()) => accepted,
@@ -590,22 +610,23 @@ impl Drop for ReverseTunnel {
 struct ServerLog(Arc<StdMutex<VecDeque<String>>>);
 
 impl ServerLog {
-    fn attach(server: &mut Child) -> Self {
+    /// Each line in the app's log starts with the device's serial, as several run at once.
+    fn attach(server: &mut Child, serial: &str) -> Self {
         let log = Self::default();
         if let Some(stdout) = server.stdout.take() {
-            tokio::spawn(log.clone().collect(stdout));
+            tokio::spawn(log.clone().collect(stdout, serial.to_string()));
         }
         if let Some(stderr) = server.stderr.take() {
-            tokio::spawn(log.clone().collect(stderr));
+            tokio::spawn(log.clone().collect(stderr, serial.to_string()));
         }
         log
     }
 
-    async fn collect(self, pipe: impl AsyncRead + Unpin) {
+    async fn collect(self, pipe: impl AsyncRead + Unpin, serial: String) {
         let mut lines = BufReader::new(pipe).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let line = line.trim_end().to_string();
-            log::info!(target: "stormcast_server", "{line}");
+            log::info!(target: "stormcast_server", "{serial}: {line}");
             let mut buffer = self
                 .0
                 .lock()

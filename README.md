@@ -31,6 +31,7 @@ While mirroring, click or tap the screen to control the device:
 - The keyboard types while the screen has focus. Press Tab to leave the screen. Characters the device's built-in key map lacks, such as æ, ø, å and emoji, are pasted through the device's clipboard, which then holds them.
 - Copy and paste work both ways: text you copy on the device lands on the PC's clipboard, and Ctrl+V on the screen pastes the PC's clipboard on the device. Text only, up to 256 KiB.
 - Back, Home, Recent apps and Power are buttons in the toolbar. Power turns the screen on or off.
+- Several devices can be mirrored at once: click each one in the list. Each gets a tab, and "Show all" puts them side by side. Only the device you use plays its sound on the PC.
 - The full screen button or F11 shows the device's screen in full screen, with the toolbar kept above it. F11 again leaves full screen.
 - A device locked with a PIN or password shows a black screen while mirroring, so Stormcast asks for the code in the toolbar. It wakes the device, opens its code entry and types the code there. The code is not kept. A pattern must be drawn on the device itself.
 

@@ -80,6 +80,8 @@ const MAX_NOTCHES = 16;
 
 export class DeviceControl {
   private readonly canvas: HTMLCanvasElement;
+  /** The device this screen controls; several can be mirrored at once (B-007). */
+  private readonly serial: string;
   /** Pointers that are down on the device, by PointerEvent.pointerId. */
   private readonly pointers = new Set<number>();
   /** Keys that are down on the device, by KeyboardEvent.code. */
@@ -88,8 +90,9 @@ export class DeviceControl {
   private sending = false;
   private closed = false;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, serial: string) {
     this.canvas = canvas;
+    this.serial = serial;
     canvas.addEventListener("pointerdown", (event) => this.pointerDown(event));
     canvas.addEventListener("pointermove", (event) => this.pointerMove(event));
     canvas.addEventListener("pointerup", (event) => this.pointerUp(event));
@@ -249,7 +252,7 @@ export class DeviceControl {
       const batch = this.queue;
       this.queue = [];
       try {
-        await sendControl(batch);
+        await sendControl(this.serial, batch);
       } catch (error) {
         console.warn("Sending input to the device failed", error);
       }

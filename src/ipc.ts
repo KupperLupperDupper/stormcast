@@ -83,10 +83,12 @@ export type ControlMessage =
 export const getStartup = () => invoke<Startup>("get_startup");
 export const listDevices = () => invoke<Device[]>("list_devices");
 export const deviceInfo = (serial: string) => invoke<DeviceInfo>("device_info", { serial });
-export const stopMirror = () => invoke<void>("stop_mirror");
+/** Stops mirroring this device; others go on (B-007). */
+export const stopMirror = (serial: string) => invoke<void>("stop_mirror", { serial });
 export const smokeReport = (report: Record<string, unknown>) => invoke<void>("smoke_report", { report });
 /** Sends control messages to the device in this order. Without a session they are dropped. */
-export const sendControl = (messages: ControlMessage[]) => invoke<void>("send_control", { messages });
+export const sendControl = (serial: string, messages: ControlMessage[]) =>
+  invoke<void>("send_control", { serial, messages });
 
 /**
  * Starts mirroring, with the device's sound on the PC when `audio` is set. Messages arrive on

@@ -8,7 +8,7 @@ All notable changes to Stormcast are listed here. The format follows [Keep a Cha
 
 - Hear the device's sound on the PC while mirroring, with little delay and in step with the picture. Meanwhile the device itself is silent. The speaker button in the toolbar gives the sound back to the device, and Stormcast remembers the choice. Sound needs Android 12 or newer; on older devices Stormcast says so and mirrors without sound.
 - Unlock a device locked with a PIN or password from the PC. Its lock screen shows black while mirroring, so Stormcast asks for the code, wakes the device and types the code there. The code is not kept.
-
+- Mirror several devices at once, each in its own tab, or side by side with "Show all". The sound on the PC follows the device you use.
 - Device details in the sidebar while mirroring: model, Android version, screen, battery, memory, storage and uptime, and the video's and sound's own numbers.
 - Full screen: the full screen button or F11 shows the device's screen full screen, with the toolbar above it.
 
