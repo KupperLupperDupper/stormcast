@@ -4,7 +4,7 @@ The queue across sessions (PRJ-04): one table per lane (swimlane), and every ite
 
 - **Status:** Idea · Next · Doing (session or branch) · Waiting (on what) · Done (date)
 - **Rules:** set an item to "Doing" with the session's name before work starts, and at most one per session. Do not touch items another session is doing. The commit message names the ID. Done items move to Archive when they are a month old.
-- **Next ID:** B-014
+- **Next ID:** B-015
 
 ## Lane: Project
 | ID | Item | Status | Note |
@@ -26,7 +26,8 @@ The queue across sessions (PRJ-04): one table per lane (swimlane), and every ite
 | ID | Item | Status | Note |
 |---|---|---|---|
 | B-009 | Separate the devices into tabs | Idea | Goes with B-007 |
-| B-010 | Better button layout | Idea | Follow the UI rulebook (CMP-02: at least 24 px with a mouse) |
+| B-010 | Better button layout | Idea | Follow the UI rulebook (CMP-02: at least 24 px with a mouse). Part of B-014 |
+| B-014 | UI overhaul | Idea | A review of the whole UI against the UI rulebook, done together with B-010 and with B-009's tabs in mind |
 
 ## Lane: Release
 | ID | Item | Status | Note |
