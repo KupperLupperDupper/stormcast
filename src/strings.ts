@@ -106,6 +106,15 @@ export const text = {
   recentApps: "Recent apps",
   power: "Power",
   soundOnPc: "Sound on this PC",
+  /** B-007 and B-009: every mirrored device has a tab; "Show all" puts them side by side. */
+  tabsLabel: "Mirrored devices",
+  tabConnecting: "Starting…",
+  tabEnded: "Stopped",
+  closeTab: "Close",
+  showAll: "Show all",
+  showAllTooltip: "Show all devices side by side",
+  announceShowAll: "All devices side by side",
+  announceTabs: "One device at a time",
   /** B-003: a toggle with a fixed name; F11 does the same. */
   fullScreen: "Full screen",
   fullScreenTooltip: "Full screen (F11)",
@@ -114,8 +123,59 @@ export const text = {
   soundUnsupportedLabel: "Sound on this PC needs Android 12 or newer on the device",
   /** Shown in the status line, and announced, when the device sends no sound. */
   soundNote: (state: string): string | null => soundNotes[state] ?? null,
-  controlHint: "Click or tap the screen to control the device.",
-  controlHintActive: "Keyboard input goes to the device. Press Tab to leave the screen.",
+  controlHint: "Click the screen to control the device",
+  controlHintActive: "The keyboard controls the device · Tab leaves the screen",
+
+  /** B-008: the device details in the sidebar. Values that are not known are left out. */
+  deviceDetails: {
+    heading: "Device details",
+    device: "Device",
+    android: "Android",
+    screen: "Screen",
+    battery: "Battery",
+    memory: "Memory",
+    storage: "Storage",
+    uptime: "Uptime",
+    connection: "Connection",
+    video: "Video",
+    sound: "Sound",
+    usb: "USB",
+    network: "Network",
+    androidVersion: (version: string, sdk: number | null, patch: string | null) =>
+      [sdk === null ? version : `${version} (API ${sdk})`, patch ? `patch ${patch}` : null]
+        .filter(Boolean)
+        .join(" · "),
+    density: (dpi: string) => `${dpi} dpi`,
+    storageFree: (free: string, total: string) => `${free} free of ${total}`,
+    days: (days: string, hours: string) => `${days} d ${hours} h`,
+    hours: (hours: string, minutes: string) => `${hours} h ${minutes} min`,
+    fps: (fps: string) => `${fps} fps`,
+    dropped: (count: string) => `${count} dropped`,
+    behind: (ms: string) => `${ms} ms behind the picture`,
+    ahead: (ms: string) => `${ms} ms ahead of the picture`,
+    batteryStatus: {
+      charging: "Charging",
+      discharging: "On battery",
+      notCharging: "Not charging",
+      full: "Full",
+    } as Record<string, string>,
+    batteryHealth: {
+      overheat: "Overheating",
+      dead: "Dead",
+      overVoltage: "Over voltage",
+      failure: "Failing",
+      cold: "Too cold",
+    } as Record<string, string>,
+    powerSource: { usb: "from USB", ac: "from a charger", wireless: "wireless charging" } as Record<string, string>,
+    soundState: {
+      off: "Off",
+      starting: "Starting",
+      playing: "Playing",
+      unsupported: "Needs Android 12",
+      refused: "Not allowed",
+      failed: "Stopped",
+    } as Record<string, string>,
+  },
 
   /** B-012: the device's lock state. Its lock screen shows black in the mirror. */
   lock: {

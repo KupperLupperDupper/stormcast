@@ -17,13 +17,16 @@ The Java code is in `server/src/main/java/com/stormitron/stormcast/server/`; the
 | change the protocol | [PROTOCOL.md](PROTOCOL.md), `protocol/vectors.txt`, `Protocol.java` and `src-tauri/src/protocol.rs`, all in the same commit |
 | capture screen, input, clipboard or sound on the device | `DisplayCapture.java`, `InputInjector.java` and `AudioCapture.java`: the only files with hidden Android APIs |
 | turn the app's control messages into input on the device | `Controller.java` |
-| tell the app the lock state, or unlock the device with its code (B-012) | `DeviceStateWatcher.java` and `Controller.unlock`; the web UI's row is `lockForm` in `src/main.ts` |
+| tell the app the lock state, or unlock the device with its code (B-012) | `DeviceStateWatcher.java` and `Controller.unlock`; the web UI's row is `lockForm` in `src/session.ts` |
 | send the sound and give it PTS on the picture's clock | `AudioStreamer.java` and `AudioTiming.java` |
-| run a session: adb push, reverse tunnel, server start and video to the web UI | `src-tauri/src/mirror.rs`; the message format to the web UI is shared with `src/player.ts` |
+| run a device's session: adb push, reverse tunnel, server start and video to the web UI | `src-tauri/src/mirror.rs`, one session per serial (B-007); the message format to the web UI is shared with `src/player.ts` |
+| change a mirrored device's card: header, lock row, screen, nav bar, sound | `src/session.ts`, one `MirrorSession` per device |
+| change the tabs, "Show all", or which device has the sound | `src/main.ts`: `setActive`, `tabBar` and `updateSound` |
 | change the H.264 setup or the decoder's reordering | `src-tauri/src/h264.rs` |
 | choose the skin (glass or solid) | `src-tauri/src/appearance.rs`: glass on Windows 11 build 22621+ with transparency turned on |
 | decode and draw the picture | `src/player.ts`: WebCodecs and canvas; the newest frame wins |
 | play the sound on the PC | `src/audio.ts`: Web Audio, blocks scheduled a little ahead, a buffer that grows on underrun, and sound-to-picture measurement |
+| show more about a device (B-008) | `src-tauri/src/diagnostics.rs` reads it with one `adb shell`; `src/details.ts` formats it for the sidebar |
 | change full screen (B-003) | `setFullScreen` in `src/main.ts`, the `data-full-screen` rules in `app.css` and the window rights in `src-tauri/capabilities/default.json` |
 | change mouse, touch, wheel or keyboard | `src/control.ts`; Rust encodes the messages in `src-tauri/src/protocol.rs` |
 | change colours, spacing and other design values | `src/styles/tokens.css` (three layers, TOK-01, TOK-02); `src/styles/app.css` uses only layers 2 and 3 |

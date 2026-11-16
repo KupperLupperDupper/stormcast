@@ -7,6 +7,7 @@
 
 mod adb;
 mod appearance;
+mod diagnostics;
 mod error;
 mod h264;
 mod mirror;
@@ -39,6 +40,12 @@ async fn list_devices(app: AppHandle) -> Result<Vec<adb::Device>, AppError> {
     adb::Adb::locate(&app)?.devices().await
 }
 
+/// Details about a device for the diagnostics panel (B-008); works without mirroring.
+#[tauri::command]
+async fn device_info(app: AppHandle, serial: String) -> Result<diagnostics::DeviceInfo, AppError> {
+    diagnostics::device_info(&adb::Adb::locate(&app)?, &serial).await
+}
+
 /// `audio`: play the device's sound on the PC from the start.
 #[tauri::command]
 async fn start_mirror(
@@ -59,18 +66,19 @@ async fn start_mirror(
 }
 
 #[tauri::command]
-async fn stop_mirror(state: State<'_, MirrorState>) -> Result<(), AppError> {
-    state.stop().await;
+async fn stop_mirror(state: State<'_, MirrorState>, serial: String) -> Result<(), AppError> {
+    state.stop(&serial).await;
     Ok(())
 }
 
-/// The web view sends one batch at a time, so the messages reach the device in order.
+/// The web view sends one batch at a time per device, so the messages reach it in order.
 #[tauri::command]
 async fn send_control(
     state: State<'_, MirrorState>,
+    serial: String,
     messages: Vec<protocol::Control>,
 ) -> Result<(), AppError> {
-    state.send_control(messages).await
+    state.send_control(&serial, messages).await
 }
 
 #[tauri::command]
@@ -120,6 +128,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_startup,
             list_devices,
+            device_info,
             start_mirror,
             stop_mirror,
             send_control,

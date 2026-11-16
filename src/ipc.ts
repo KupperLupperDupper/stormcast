@@ -23,6 +23,28 @@ export interface Device {
   product: string | null;
 }
 
+/** Details about a device (B-008, src-tauri/src/diagnostics.rs). A device may not report every field. */
+export interface DeviceInfo {
+  manufacturer: string | null;
+  model: string | null;
+  android: string | null;
+  sdk: number | null;
+  securityPatch: string | null;
+  abi: string | null;
+  screenWidth: number | null;
+  screenHeight: number | null;
+  density: number | null;
+  batteryLevel: number | null;
+  batteryStatus: "charging" | "discharging" | "notCharging" | "full" | null;
+  batteryHealth: "good" | "overheat" | "dead" | "overVoltage" | "failure" | "cold" | null;
+  batteryTemperatureC: number | null;
+  powerSource: "usb" | "ac" | "wireless" | null;
+  memoryMb: number | null;
+  storageTotalMb: number | null;
+  storageFreeMb: number | null;
+  uptimeSeconds: number | null;
+}
+
 /** Errors from Rust carry a stable code (selects the UI text) and a technical detail. */
 export interface AppError {
   code: string;
@@ -60,10 +82,13 @@ export type ControlMessage =
 
 export const getStartup = () => invoke<Startup>("get_startup");
 export const listDevices = () => invoke<Device[]>("list_devices");
-export const stopMirror = () => invoke<void>("stop_mirror");
+export const deviceInfo = (serial: string) => invoke<DeviceInfo>("device_info", { serial });
+/** Stops mirroring this device; others go on (B-007). */
+export const stopMirror = (serial: string) => invoke<void>("stop_mirror", { serial });
 export const smokeReport = (report: Record<string, unknown>) => invoke<void>("smoke_report", { report });
 /** Sends control messages to the device in this order. Without a session they are dropped. */
-export const sendControl = (messages: ControlMessage[]) => invoke<void>("send_control", { messages });
+export const sendControl = (serial: string, messages: ControlMessage[]) =>
+  invoke<void>("send_control", { serial, messages });
 
 /**
  * Starts mirroring, with the device's sound on the PC when `audio` is set. Messages arrive on

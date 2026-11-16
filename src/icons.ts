@@ -6,7 +6,7 @@ import type { DeviceButton } from "./ipc";
 
 const SVG = "http://www.w3.org/2000/svg";
 
-export type IconName = DeviceButton | "soundOn" | "soundOff" | "fullScreen" | "exitFullScreen";
+export type IconName = DeviceButton | "soundOn" | "soundOff" | "fullScreen" | "exitFullScreen" | "showAll";
 
 /** A speaker. */
 const SPEAKER = "M4 9.5h3.5L12 5.5v13l-4.5-4H4z";
@@ -24,6 +24,12 @@ const shapes: Record<IconName, string[]> = {
   // Full screen: four corners pointing out; leaving it: the same corners pointing in.
   fullScreen: ["M4 9V4h5", "M15 4h5v5", "M20 15v5h-5", "M9 20H4v-5"],
   exitFullScreen: ["M9 4v5H4", "M20 9h-5V4", "M15 20v-5h5", "M4 15h5v5"],
+  // Show all: three phones side by side.
+  showAll: [
+    "M3.5 6h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z",
+    "M10 6h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z",
+    "M16.5 6h4a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z",
+  ],
 };
 
 /** A decorative icon: the button around it carries the name. */

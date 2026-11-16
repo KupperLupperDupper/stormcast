@@ -1,37 +1,37 @@
 import "./styles/tokens.css";
 import "./styles/app.css";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { AudioPlayer, type AudioState } from "./audio";
-import { DeviceControl } from "./control";
+import type { AudioState } from "./audio";
+import { facts } from "./details";
 import { h } from "./dom";
 import { icon } from "./icons";
 import {
   asAppError,
+  deviceInfo,
   getStartup,
   listDevices,
   smokeReport,
-  startMirror,
-  stopMirror,
   type AppError,
   type Device,
-  type DeviceButton,
+  type DeviceInfo,
   type Startup,
 } from "./ipc";
-import { MirrorPlayer } from "./player";
+import { actions, button, details, message, MirrorSession, type SessionHost } from "./session";
 import { text } from "./strings";
 import { hideTooltip, withTooltip } from "./tooltip";
 
-type View =
+/** What the stage shows while no device is mirrored. */
+type Notice =
   | { kind: "searching" }
   | { kind: "no-adb"; detail: string }
   | { kind: "no-device" }
   | { kind: "pick" }
-  | { kind: "connecting"; serial: string }
-  | { kind: "mirroring"; serial: string; deviceName: string }
-  | { kind: "error"; serial?: string; error: AppError };
+  | { kind: "error"; serial: string; error: AppError };
+
+/** B-007: one device at a time in tabs, or every mirrored device side by side. */
+type Layout = "tabs" | "all";
 
 const POLL_INTERVAL_MS = 1500;
-const SLOW_CONNECT_MS = 4000;
 const SMOKE_FIRST_FRAME_MS = 20000;
 const SMOKE_SETTLE_MS = 1500;
 const SMOKE_INPUT_MS = 3000;
@@ -46,34 +46,33 @@ const SMOKE_TOGGLE_MS = 3000;
 const SYNC_AHEAD_MS = 45;
 const SYNC_BEHIND_MS = 125;
 const SOUND_KEY = "stormcast.soundOnPc";
-// Device state flags from the server (B-012); bit 0, screen on, is not needed here.
-const STATE_LOCKED = 2;
-const STATE_NEEDS_CODE = 4;
-/** After an unlock with a code, this long until a device that is still locked counts as a wrong code. */
-const UNLOCK_CHECK_MS = 4000;
+const LAYOUT_KEY = "stormcast.layout";
+/** B-008: how often the device details are read again while mirroring. */
+const DETAILS_INTERVAL_MS = 10000;
 
 const deviceList = byId("device-list");
 const stage = byId("stage");
 const announcer = byId("announcer");
+const detailsSection = byId("device-details");
+const factList = byId("device-facts");
 
 let startup: Startup | null = null;
 let devices: Device[] = [];
 let renderedDevices = "";
-let view: View = { kind: "searching" };
-let player: MirrorPlayer | null = null;
-let control: DeviceControl | null = null;
-let session = 0;
-let statusText: HTMLElement | null = null;
-let soundButton: HTMLButtonElement | null = null;
-/** The device's lock state, or null while it is unknown (B-012). */
-let deviceState: number | null = null;
-let lockRow: HTMLFormElement | null = null;
-let unlockCheck = 0;
+let notice: Notice = { kind: "searching" };
+/** B-007: the mirrored devices by serial, in the order they were opened. */
+const sessions = new Map<string, MirrorSession>();
+/** The session in use: its tab is selected, and it has the sound on the PC. */
+let active: string | null = null;
+let layout: Layout = loadSetting(LAYOUT_KEY) === "all" ? "all" : "tabs";
+/** Play the sound of the device in use on this PC; remembered between sessions. */
+let soundOnPc = loadSetting(SOUND_KEY) !== "0";
 /** B-003: the window is in full screen, without the sidebar. */
 let fullScreen = false;
-let fullScreenButton: HTMLButtonElement | null = null;
-/** Play the device's sound on this PC; remembered between sessions. */
-let soundOnPc = loadSoundSetting();
+/** B-008: details read with adb, by serial, and the timer that reads the active device's. */
+const deviceDetails = new Map<string, DeviceInfo>();
+let detailsTimer = 0;
+let renderedFacts = "";
 let smoke: "off" | "waiting" | "running" | "done" = "off";
 
 function byId(id: string): HTMLElement {
@@ -84,8 +83,7 @@ function byId(id: string): HTMLElement {
 
 const label = (device: Device) => device.model ?? device.serial;
 const findDevice = (serial?: string) => devices.find((device) => device.serial === serial);
-const activeSerial = () => (view.kind === "connecting" || view.kind === "mirroring" ? view.serial : undefined);
-const isIdle = (v: View) => v.kind === "searching" || v.kind === "no-adb" || v.kind === "no-device" || v.kind === "pick";
+const activeSession = () => (active === null ? undefined : sessions.get(active));
 
 /** Screen reader announcement without moving focus (A11Y-04). */
 function announce(message: string) {
@@ -93,18 +91,35 @@ function announce(message: string) {
   window.setTimeout(() => (announcer.textContent = message), 50);
 }
 
-function setView(next: View) {
-  if (JSON.stringify(next) === JSON.stringify(view)) return;
-  view = next;
-  renderStage();
-  renderDevices();
-}
+const host: SessionHost = {
+  changed: () => {
+    renderStage();
+    renderDevices();
+  },
+  used: (session) => setActive(session.serial, false),
+  close: (session) => closeSession(session.serial),
+  retry: (session) => void openSession(session.serial),
+  setSound: (session, on) => {
+    soundOnPc = on;
+    // The smoke test toggles too, but never changes what the user chose.
+    if (smoke === "off") saveSetting(SOUND_KEY, on ? "1" : "0");
+    if (on) setActive(session.serial, false);
+    updateSound();
+  },
+  announce: (session, message) => {
+    if (session.serial === active) announce(message);
+  },
+  label: (serial) => {
+    const device = findDevice(serial);
+    return device ? label(device) : serial;
+  },
+};
 
 // ---------- Devices ----------
 
 /** Renders the device list if it changed, and keeps focus on the same device (A11Y-09). */
 function renderDevices(): boolean {
-  const key = JSON.stringify([devices, activeSerial()]);
+  const key = JSON.stringify([devices, [...sessions.keys()], active]);
   if (key === renderedDevices) return false;
   renderedDevices = key;
   const focused = deviceList.contains(document.activeElement)
@@ -116,8 +131,8 @@ function renderDevices(): boolean {
 }
 
 function deviceItem(device: Device): HTMLElement {
-  const active = device.serial === activeSerial();
-  const tone = active ? "active" : device.state === "device" ? "ready" : "attention";
+  const mirrored = sessions.has(device.serial);
+  const tone = mirrored ? "active" : device.state === "device" ? "ready" : "attention";
   return h(
     "li",
     {},
@@ -127,34 +142,45 @@ function deviceItem(device: Device): HTMLElement {
         class: "device",
         type: "button",
         "data-serial": device.serial,
-        "aria-current": active ? "true" : undefined,
+        "aria-current": device.serial === active ? "true" : undefined,
         onclick: () => activateDevice(device),
       },
       h("span", { class: "device__name" }, label(device)),
-      h("span", { class: `chip chip--${tone}` }, active ? text.mirroringNow : text.deviceState(device.state)),
+      h("span", { class: `chip chip--${tone}` }, mirrored ? text.mirroringNow : text.deviceState(device.state)),
       h("span", { class: "device__meta" }, device.serial),
     ),
   );
 }
 
+/** A mirrored device comes to the front; a ready one starts mirroring next to the others. */
 function activateDevice(device: Device) {
-  if (device.serial === activeSerial()) return;
+  if (sessions.has(device.serial)) {
+    setActive(device.serial, true);
+    return;
+  }
   if (device.state === "device") {
-    void connect(device.serial);
+    void openSession(device.serial);
     return;
   }
   const code = device.state === "unauthorized" ? "device_unauthorized" : "device_offline";
-  setView({ kind: "error", serial: device.serial, error: { code, detail: `adb state: ${device.state}` } });
+  const error = { code, detail: `adb state: ${device.state}` };
+  if (sessions.size === 0) {
+    notice = { kind: "error", serial: device.serial, error };
+    renderStage();
+  }
+  announce(text.error(code).title);
 }
 
 async function poll() {
   try {
     devices = await listDevices();
     const listChanged = renderDevices();
-    if (isIdle(view)) {
-      const next: View = devices.length === 0 ? { kind: "no-device" } : { kind: "pick" };
-      if (next.kind !== view.kind) setView(next);
-      else if (listChanged) renderStage();
+    if (sessions.size === 0 && notice.kind !== "error") {
+      const next: Notice = devices.length === 0 ? { kind: "no-device" } : { kind: "pick" };
+      if (next.kind !== notice.kind || listChanged) {
+        notice = next;
+        renderStage();
+      }
     }
     smokeStep();
   } catch (e) {
@@ -162,7 +188,10 @@ async function poll() {
     if (error.code === "adb_not_found") {
       devices = [];
       renderDevices();
-      if (view.kind !== "connecting" && view.kind !== "mirroring") setView({ kind: "no-adb", detail: error.detail });
+      if (sessions.size === 0) {
+        notice = { kind: "no-adb", detail: error.detail };
+        renderStage();
+      }
     } else {
       // Transient: the next poll tries again (PAT-03).
       console.warn("Listing devices failed", error);
@@ -172,361 +201,278 @@ async function poll() {
   }
 }
 
-// ---------- Mirroring ----------
+// ---------- Sessions (B-007) ----------
 
-async function connect(serial: string) {
-  await disconnect(false);
-  const id = ++session;
-  const canvas = h("canvas", {
-    class: "screen__video",
-    // While the screen has focus, the keyboard controls the device; Tab leaves it (A11Y-03).
-    tabindex: "0",
-    role: "application",
-    "aria-label": text.screenLabel,
-    "aria-describedby": "control-hint-active",
-  });
-  const audio = new AudioPlayer(soundOnPc, (state) => {
-    if (id === session) soundChanged(state);
-  });
-  const current = new MirrorPlayer(
-    canvas,
-    {
-      hello: (deviceName) => {
-        if (id !== session) return;
-        setView({ kind: "mirroring", serial, deviceName });
-        announce(text.announceMirroring(deviceName));
-      },
-      end: (error) => {
-        if (id !== session) return;
-        failSession(serial, error);
-      },
-      deviceState: (flags) => {
-        if (id !== session) return;
-        deviceState = flags;
-        renderLock();
-      },
-    },
-    audio,
-  );
-  player = current;
-  control = new DeviceControl(canvas);
-  setView({ kind: "connecting", serial });
-  window.setTimeout(() => {
-    // PAT-02: a long wait explains itself. The hint already has its space, so nothing
-    // moves (LAY-02) and focus stays where it is (A11Y-09).
-    if (id !== session || view.kind !== "connecting") return;
-    stage.querySelector(".connect-hint")?.classList.remove("is-invisible");
-    announce(text.connectingSlow);
-  }, SLOW_CONNECT_MS);
-  try {
-    await startMirror(serial, soundOnPc, (packet) => {
-      if (id === session) current.handle(packet);
-    });
-  } catch (e) {
-    if (id === session) failSession(serial, asAppError(e));
+/** Starts mirroring the device, in place of a session it had, and brings it to the front. */
+async function openSession(serial: string) {
+  sessions.get(serial)?.close();
+  const session = new MirrorSession(serial, host, false);
+  sessions.set(serial, session);
+  if (notice.kind === "error") notice = { kind: "pick" };
+  // The new device is the one in use, so it gets the sound before its server starts.
+  setActive(serial, true);
+  await session.start();
+}
+
+/** Stops mirroring the device, or closes the pane of a session that ended. */
+function closeSession(serial: string) {
+  const session = sessions.get(serial);
+  if (!session) return;
+  const order = [...sessions.keys()];
+  const index = order.indexOf(serial);
+  const hadFocus = session.element.contains(document.activeElement);
+  session.close();
+  sessions.delete(serial);
+  deviceDetails.delete(serial);
+  announce(text.announceStopped);
+  if (sessions.size === 0) {
+    active = null;
+    // Full screen belongs to mirroring; the device list must be back when it ends.
+    void setFullScreen(false);
+    notice = devices.length === 0 ? { kind: "no-device" } : { kind: "pick" };
+    renderStage();
+    renderDevices();
+    restartDetails();
+    if (hadFocus) stage.querySelector<HTMLElement>(".message__title")?.focus();
+    return;
+  }
+  if (active === serial) {
+    // The next tab, or the one before when it was the last (A11Y-09).
+    const next = [...sessions.keys()][Math.min(index, sessions.size - 1)];
+    setActive(next, true, hadFocus);
+  } else {
+    renderStage();
+    renderDevices();
   }
 }
 
-function endSession() {
-  session++;
-  player?.close();
-  player = null;
-  control?.close();
-  control = null;
-  statusText = null;
-  soundButton = null;
-  deviceState = null;
-  lockRow = null;
-  window.clearTimeout(unlockCheck);
-  fullScreenButton = null;
-  // Full screen belongs to mirroring; the device list must be back when it ends.
-  void setFullScreen(false);
-}
-
-function failSession(serial: string, error: AppError) {
-  endSession();
-  setView({ kind: "error", serial, error });
-  announce(text.error(error.code).title);
-  if (smoke === "running") void finishSmoke(error);
-}
-
-async function disconnect(showPicker = true) {
-  const wasActive = player !== null;
-  endSession();
-  if (wasActive) await stopMirror().catch((e) => console.warn("Stopping failed", e));
-  if (showPicker) {
-    setView(devices.length === 0 ? { kind: "no-device" } : { kind: "pick" });
-    if (wasActive) announce(text.announceStopped);
+/**
+ * Makes the session the one in use: its tab is selected and its sound plays on the PC. From the
+ * tabs or the device list it comes to the front; from a click in its pane only the sound moves.
+ */
+function setActive(serial: string, bringToFront: boolean, focus = false) {
+  if (!sessions.has(serial)) return;
+  const changed = serial !== active;
+  active = serial;
+  updateSound();
+  if (changed || bringToFront) {
+    // Side by side, every pane is already shown: moving one would drop its touch, which may just
+    // have started there, so only the tab bar and the highlight change.
+    if (layout === "tabs") renderStage();
+    else renderChrome();
+    renderDevices();
+    restartDetails();
   }
+  if (focus) activeSession()?.focusScreen();
+}
+
+/** The tab bar and which pane is in use, without moving the panes. */
+function renderChrome() {
+  const bar = stage.querySelector(".tab-bar");
+  if (!bar) return;
+  const hadFocus = bar.contains(document.activeElement) ? (document.activeElement as HTMLElement).id : null;
+  bar.replaceWith(tabBar([...sessions.values()]));
+  for (const session of sessions.values()) paneFor(session);
+  if (hadFocus) document.getElementById(hadFocus)?.focus();
+}
+
+/** Only the session in use plays its sound on the PC; the others give it back to their device. */
+function updateSound() {
+  for (const session of sessions.values()) session.setSoundOnPc(soundOnPc && session.serial === active);
 }
 
 // ---------- Stage ----------
 
 function renderStage() {
-  const hadFocus = stage.contains(document.activeElement);
+  const hadFocus = stage.contains(document.activeElement) ? document.activeElement : null;
   hideTooltip();
-  statusText = null;
-  soundButton = null;
-  lockRow = null;
-  fullScreenButton = null;
-  stage.replaceChildren(stageContent());
-  renderLock();
-  if (hadFocus) {
-    // A11Y-09: the focused element is gone, so move focus on purpose. When mirroring starts,
-    // that is the screen, ready for the keyboard.
-    (
-      stage.querySelector<HTMLElement>(".button--primary") ??
-      stage.querySelector<HTMLElement>(".screen__video") ??
-      stage.querySelector<HTMLElement>("#stage-title")
-    )?.focus();
+  document.documentElement.toggleAttribute("data-mirroring", sessions.size > 0);
+  stage.replaceChildren(sessions.size === 0 ? noticeContent() : mirrorsContent());
+  if (!hadFocus) return;
+  if (hadFocus.isConnected) {
+    // Moving a pane in the page drops its focus; give it back.
+    (hadFocus as HTMLElement).focus({ preventScroll: true });
+    return;
   }
+  // A11Y-09: the focused element is gone, so move focus on purpose.
+  (
+    stage.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ??
+    stage.querySelector<HTMLElement>(".button--primary") ??
+    stage.querySelector<HTMLElement>(".message__title")
+  )?.focus();
 }
 
-function stageContent(): Node {
-  switch (view.kind) {
+function noticeContent(): Node {
+  switch (notice.kind) {
     case "searching":
-      return message(text.searching, []);
+      return message("stage-title", text.searching, []);
     case "no-adb":
-      return message(text.error("adb_not_found").title, [
+      return message("stage-title", text.error("adb_not_found").title, [
         h("p", {}, text.error("adb_not_found").body),
         h("p", {}, h("code", { class: "code" }, text.adbInstallCommand)),
-        details(view.detail),
+        details(notice.detail),
       ]);
     case "no-device":
-      return message(text.noDevice.title, [
+      return message("stage-title", text.noDevice.title, [
         h("ol", { class: "steps" }, ...text.noDevice.steps.map((step) => h("li", {}, step))),
       ]);
     case "pick": {
       const ready = devices.filter((device) => device.state === "device");
       const only = ready.length === 1 ? ready[0] : undefined;
-      return message(text.pick.title, [
+      return message("stage-title", text.pick.title, [
         h("p", {}, only ? text.pick.one(label(only)) : text.pick.many),
-        only ? actions(button(text.mirror, () => void connect(only.serial), "primary")) : null,
+        only ? actions(button(text.mirror, () => void openSession(only.serial), "primary")) : null,
       ]);
     }
-    case "connecting": {
-      const device = findDevice(view.serial);
-      const title = text.connecting(device ? label(device) : view.serial);
-      return message(
-        title,
-        [
-          h("div", { class: "progress", role: "progressbar", "aria-label": title }),
-          h("p", { class: "text-muted connect-hint is-invisible" }, text.connectingSlow),
-          actions(button(text.cancel, () => void disconnect())),
-        ],
-        true,
-      );
-    }
-    case "mirroring":
-      return mirrorView(view.deviceName);
     case "error": {
-      const copy = text.error(view.error.code);
-      const device = findDevice(view.serial);
-      return message(copy.title, [
+      const copy = text.error(notice.error.code);
+      return message("stage-title", copy.title, [
         h("p", {}, copy.body),
-        view.error.code === "adb_not_found" ? h("p", {}, h("code", { class: "code" }, text.adbInstallCommand)) : null,
-        device?.state === "device" ? actions(button(text.tryAgain, () => void connect(device.serial), "primary")) : null,
-        view.error.detail ? details(view.error.detail) : null,
+        notice.error.detail ? details(notice.error.detail) : null,
       ]);
     }
   }
 }
 
-function mirrorView(deviceName: string): Node {
-  statusText = h("span", { class: "toolbar__status" });
+/** The tab bar, then the device in front (tabs) or every device side by side (all). */
+function mirrorsContent(): Node {
+  const list = [...sessions.values()];
+  const shown = layout === "all" ? list : list.filter((session) => session.serial === active);
   return h(
     "div",
-    { class: "mirror" },
+    { class: `mirrors mirrors--${layout}` },
+    tabBar(list),
+    h("div", { class: "mirrors__panes" }, ...shown.map((session) => paneFor(session))),
+  );
+}
+
+function paneFor(session: MirrorSession): HTMLElement {
+  const pane = session.element;
+  pane.classList.toggle("pane--active", layout === "all" && session.serial === active);
+  if (layout === "tabs") {
+    pane.setAttribute("role", "tabpanel");
+    pane.setAttribute("aria-labelledby", session.id("tab"));
+  } else {
+    pane.removeAttribute("role");
+    pane.removeAttribute("aria-labelledby");
+  }
+  return pane;
+}
+
+/**
+ * The mirrored devices as tabs (ARIA tabs: arrow keys move between them, A11Y-03), and the
+ * layout and full screen toggles. In the side by side layout every pane is shown, so the tabs are
+ * plain buttons that pick the device in use.
+ */
+function tabBar(list: MirrorSession[]): HTMLElement {
+  const tabs = layout === "tabs";
+  const items = list.map((session) => {
+    const selected = session.serial === active;
+    const state = session.phase === "connecting" ? text.tabConnecting : session.phase === "ended" ? text.tabEnded : null;
+    return h(
+      "button",
+      {
+        class: "tab",
+        type: "button",
+        id: session.id("tab"),
+        role: tabs ? "tab" : undefined,
+        "aria-selected": tabs ? String(selected) : undefined,
+        "aria-controls": tabs && selected ? session.id("pane") : undefined,
+        "aria-pressed": tabs ? undefined : String(selected),
+        tabindex: tabs && !selected ? "-1" : undefined,
+        onclick: () => setActive(session.serial, true),
+        onkeydown: (event: Event) => tabKey(event as KeyboardEvent, list, session),
+      },
+      h("span", { class: "tab__name" }, session.title),
+      state ? h("span", { class: "tab__state" }, state) : null,
+    );
+  });
+  return h(
+    "div",
+    { class: "tab-bar panel" },
     h(
       "div",
-      { class: "toolbar panel" },
-      h("span", { class: "toolbar__title" }, deviceName),
-      statusText,
-      h(
-        "div",
-        { class: "toolbar__group", role: "group", "aria-label": text.deviceButtons },
-        deviceButton(text.back, "back"),
-        deviceButton(text.home, "home"),
-        deviceButton(text.recentApps, "recentApps"),
-        deviceButton(text.power, "power"),
-      ),
-      soundToggle(),
-      fullScreenToggle(),
-      button(text.stop, () => void disconnect()),
-      // Says whether the keyboard goes to the device. Both lines keep their space, so
-      // switching moves nothing (LAY-02).
-      h(
-        "p",
-        { class: "control-hint" },
-        h("span", { class: "control-hint__idle" }, text.controlHint),
-        h("span", { class: "control-hint__active", id: "control-hint-active" }, text.controlHintActive),
-      ),
-      lockForm(),
+      tabs
+        ? { class: "tab-list", role: "tablist", "aria-label": text.tabsLabel }
+        : { class: "tab-list", role: "group", "aria-label": text.tabsLabel },
+      ...items,
     ),
-    // The mirrored screen never sits under glass or any other layer.
-    h("div", { class: "screen" }, player?.canvas ?? null),
+    h("div", { class: "tab-bar__tools" }, layoutToggle(), fullScreenToggle()),
   );
 }
 
-/**
- * B-012: one compact row with a field for the device's code, shown only while the device is
- * locked with a code. The mirror shows such a lock screen black, so this is where the code goes;
- * a lock without a code shows in the mirror and needs only Power and a swipe. The field is
- * cleared at once, and the code is never stored.
- */
-function lockForm(): HTMLFormElement {
-  lockRow = h(
-    "form",
-    { class: "lock", hidden: true, onsubmit: submitUnlock },
-    h("label", { class: "text-label", for: "unlock-code" }, text.lock.codeLabel),
-    h("input", {
-      class: "field",
-      id: "unlock-code",
-      name: "unlock-code",
-      type: "password",
-      autocomplete: "off",
-      spellcheck: "false",
-      autocapitalize: "off",
-      "aria-describedby": "lock-note",
-    }),
-    h("button", { class: "button button--primary", type: "submit" }, text.lock.unlock),
-    h("p", { class: "lock__note", id: "lock-note", role: "status" }),
-  );
-  return lockRow;
-}
-
-function renderLock() {
-  const row = lockRow;
-  if (!row) return;
-  const flags = deviceState ?? 0;
-  const show = (flags & STATE_LOCKED) !== 0 && (flags & STATE_NEEDS_CODE) !== 0;
-  const input = row.querySelector<HTMLInputElement>("#unlock-code");
-  if (!show) {
-    window.clearTimeout(unlockCheck);
-    const hadFocus = row.contains(document.activeElement);
-    row.hidden = true;
-    if (input) input.value = "";
-    setLockNote("");
-    // A11Y-09: the focused field is gone, so the screen takes over, ready for the keyboard.
-    if (hadFocus) player?.canvas.focus({ preventScroll: true });
-    return;
-  }
-  if (!row.hidden) return;
-  row.hidden = false;
-  announce(text.lock.announce);
-  // The field is the clear place for the code; take focus only from the screen or nowhere.
-  const active = document.activeElement;
-  if (active === document.body || active === player?.canvas) input?.focus();
-}
-
-function setLockNote(note: string) {
-  const element = lockRow?.querySelector<HTMLElement>(".lock__note");
-  if (element) element.textContent = note;
-}
-
-function submitUnlock(event: Event) {
+/** Arrow keys, Home and End move between the tabs and select them (ARIA tabs pattern). */
+function tabKey(event: KeyboardEvent, list: MirrorSession[], session: MirrorSession) {
+  if (layout !== "tabs") return;
+  const index = list.indexOf(session);
+  const target =
+    event.key === "ArrowRight"
+      ? list[(index + 1) % list.length]
+      : event.key === "ArrowLeft"
+        ? list[(index - 1 + list.length) % list.length]
+        : event.key === "Home"
+          ? list[0]
+          : event.key === "End"
+            ? list[list.length - 1]
+            : undefined;
+  if (!target) return;
   event.preventDefault();
-  const input = lockRow?.querySelector<HTMLInputElement>("#unlock-code");
-  const code = input?.value ?? "";
-  if (input) input.value = "";
-  setLockNote("");
-  control?.unlock(code);
-  window.clearTimeout(unlockCheck);
-  if (!code) return;
-  unlockCheck = window.setTimeout(() => {
-    if (deviceState === null || (deviceState & STATE_LOCKED) === 0) return;
-    setLockNote(text.lock.stillLocked);
-    input?.focus();
-  }, UNLOCK_CHECK_MS);
+  setActive(target.serial, true);
+  document.getElementById(target.id("tab"))?.focus();
 }
 
-/**
- * A device button with Android's own symbol; the name is in aria-label and the tooltip (CMP-14).
- * A mouse click leaves focus on the screen, so typing can go on.
- */
-function deviceButton(label: string, which: DeviceButton) {
+/** "Show all": every mirrored device side by side. A toggle with a fixed name (CMP-15). */
+function layoutToggle() {
   return withTooltip(
     h(
       "button",
       {
-        class: "button button--secondary button--icon",
+        class: "button button--ghost button--icon",
         type: "button",
-        "aria-label": label,
-        onmousedown: (event: Event) => event.preventDefault(),
-        onclick: () => control?.button(which),
+        "aria-label": text.showAll,
+        "aria-pressed": String(layout === "all"),
+        "data-tooltip": text.showAllTooltip,
+        onclick: () => {
+          layout = layout === "all" ? "tabs" : "all";
+          saveSetting(LAYOUT_KEY, layout);
+          renderStage();
+          announce(layout === "all" ? text.announceShowAll : text.announceTabs);
+        },
       },
-      icon(which),
+      icon("showAll"),
     ),
   );
 }
 
-/**
- * Plays the device's sound on this PC, or gives it back to the device. A toggle with a fixed name
- * and aria-pressed; the icon shows the state too (COL-03). A mouse click leaves focus on the screen.
- */
-function soundToggle() {
-  soundButton = withTooltip(
-    h("button", {
-      class: "button button--secondary button--icon",
-      type: "button",
-      onmousedown: (event: Event) => event.preventDefault(),
-      onclick: toggleSound,
-    }),
-  );
-  renderSound();
-  return soundButton;
-}
-
-function renderSound() {
-  if (!soundButton) return;
-  const unsupported = player?.audio.current === "unsupported";
-  const on = soundOnPc && !unsupported;
-  soundButton.setAttribute("aria-pressed", String(on));
-  soundButton.setAttribute("aria-label", unsupported ? text.soundUnsupportedLabel : text.soundOnPc);
-  if (unsupported) soundButton.setAttribute("aria-disabled", "true");
-  else soundButton.removeAttribute("aria-disabled");
-  soundButton.replaceChildren(icon(on ? "soundOn" : "soundOff"));
-}
-
-function toggleSound() {
-  if (!player) return;
-  if (player.audio.current === "unsupported") {
-    announce(text.soundUnsupportedLabel);
-    return;
-  }
-  soundOnPc = !soundOnPc;
-  // The smoke test toggles too, but never changes what the user chose.
-  if (smoke === "off") saveSoundSetting(soundOnPc);
-  player.audio.setEnabled(soundOnPc);
-  control?.audio(soundOnPc);
-  renderSound();
-}
+// ---------- Full screen (B-003) ----------
 
 /**
- * B-003: full screen, a toggle with a fixed name and aria-pressed; the icon shows the state too
- * (CMP-15). F11 does the same. The toolbar stays above the picture, so nothing lies on it.
+ * Full screen, a toggle with a fixed name and aria-pressed; the icon shows the state too
+ * (CMP-15). F11 does the same. The tab bar and the cards' headers stay above the pictures, so
+ * nothing lies on them.
  */
 function fullScreenToggle() {
-  fullScreenButton = withTooltip(
-    h("button", {
-      class: "button button--secondary button--icon",
-      type: "button",
-      "aria-label": text.fullScreen,
-      "aria-keyshortcuts": "F11",
-      "data-tooltip": text.fullScreenTooltip,
-      onmousedown: (event: Event) => event.preventDefault(),
-      onclick: () => void setFullScreen(!fullScreen),
-    }),
+  return withTooltip(
+    h(
+      "button",
+      {
+        class: "button button--ghost button--icon",
+        type: "button",
+        "aria-label": text.fullScreen,
+        "aria-pressed": String(fullScreen),
+        "aria-keyshortcuts": "F11",
+        "data-tooltip": text.fullScreenTooltip,
+        onmousedown: (event: Event) => event.preventDefault(),
+        onclick: () => void setFullScreen(!fullScreen),
+      },
+      icon(fullScreen ? "exitFullScreen" : "fullScreen"),
+    ),
   );
-  renderFullScreen();
-  return fullScreenButton;
 }
 
 function renderFullScreen() {
   document.documentElement.toggleAttribute("data-full-screen", fullScreen);
-  if (!fullScreenButton) return;
-  fullScreenButton.setAttribute("aria-pressed", String(fullScreen));
-  fullScreenButton.replaceChildren(icon(fullScreen ? "exitFullScreen" : "fullScreen"));
+  if (sessions.size > 0) renderStage();
 }
 
 async function setFullScreen(on: boolean) {
@@ -555,68 +501,72 @@ async function syncFullScreen() {
 }
 
 window.addEventListener("resize", () => void syncFullScreen());
-// F11 works while mirroring, and always leaves full screen. The screen does not pass it on.
+// F11 works while mirroring, and always leaves full screen. The screens do not pass it on.
 window.addEventListener("keydown", (event) => {
   if (event.key !== "F11" || event.repeat) return;
-  if (view.kind !== "mirroring" && !fullScreen) return;
+  if (sessions.size === 0 && !fullScreen) return;
   event.preventDefault();
   void setFullScreen(!fullScreen);
 });
 
-function soundChanged(state: AudioState) {
-  renderSound();
-  updateStatus();
-  const note = text.soundNote(state);
-  if (note) announce(note);
+// ---------- Status and device details (B-008) ----------
+
+function tick() {
+  for (const session of sessions.values()) session.updateStatus();
+  renderDetails();
 }
 
-function loadSoundSetting(): boolean {
+window.setInterval(tick, 1000);
+
+/** Reads the details of the device in use now and every few seconds. */
+function restartDetails() {
+  window.clearInterval(detailsTimer);
+  const serial = active;
+  renderDetails();
+  if (serial === null) return;
+  const load = async () => {
+    try {
+      const info = await deviceInfo(serial);
+      if (!sessions.has(serial)) return;
+      deviceDetails.set(serial, info);
+      renderDetails();
+    } catch (e) {
+      // The next read tries again; the stream's own numbers still show (PAT-03).
+      console.warn("Reading the device details failed", e);
+    }
+  };
+  void load();
+  detailsTimer = window.setInterval(() => void load(), DETAILS_INTERVAL_MS);
+}
+
+/** Shows the details of the device in use; rebuilt only when a value changed. */
+function renderDetails() {
+  const session = activeSession();
+  const rows = session
+    ? facts(session.serial, deviceDetails.get(session.serial) ?? null, session.phase === "mirroring" ? session.player.stats() : null)
+    : [];
+  const key = JSON.stringify(rows);
+  if (key === renderedFacts) return;
+  renderedFacts = key;
+  detailsSection.hidden = rows.length === 0;
+  factList.replaceChildren(...rows.flatMap(([term, value]) => [h("dt", {}, term), h("dd", {}, value)]));
+}
+
+function loadSetting(key: string): string | null {
   try {
-    return localStorage.getItem(SOUND_KEY) !== "0";
+    return localStorage.getItem(key);
   } catch {
-    return true;
+    return null;
   }
 }
 
-function saveSoundSetting(on: boolean) {
+function saveSetting(key: string, value: string) {
   try {
-    localStorage.setItem(SOUND_KEY, on ? "1" : "0");
+    localStorage.setItem(key, value);
   } catch {
-    // Not remembered; it still applies to this session.
+    // Not remembered; it still applies now.
   }
 }
-
-function message(title: string, body: Array<Node | null>, busy = false): Node {
-  return h(
-    "section",
-    { class: "message panel", "aria-labelledby": "stage-title", "aria-busy": busy ? "true" : undefined },
-    h("h2", { class: "message__title", id: "stage-title", tabindex: "-1" }, title),
-    ...body,
-  );
-}
-
-const actions = (...buttons: Node[]) => h("div", { class: "actions" }, ...buttons);
-
-function button(label: string, onClick: () => void, variant: "primary" | "secondary" = "secondary") {
-  return h("button", { class: `button button--${variant}`, type: "button", onclick: onClick }, label);
-}
-
-function details(detail: string): Node {
-  return h("details", { class: "details" }, h("summary", {}, text.details), h("pre", {}, detail));
-}
-
-/** Size and frame rate, and why there is no sound, when there is none. */
-function updateStatus() {
-  if (!player || !statusText) return;
-  const stats = player.stats();
-  const parts = [
-    stats.width > 0 ? text.status(stats.width, stats.height, stats.fps) : null,
-    text.soundNote(stats.audio.state),
-  ];
-  statusText.textContent = parts.filter((part) => part !== null).join(" · ");
-}
-
-window.setInterval(updateStatus, 1000);
 
 // ---------- Smoke test (STORMCAST_SMOKE=1) ----------
 
@@ -647,32 +597,34 @@ function smokeStep() {
 
 /** Mirrors the first ready device, opens Recent apps until the picture changes, and goes Back. */
 async function runSmoke(serial: string) {
-  void connect(serial);
-  const framed = await waitUntil(() => (player?.stats().framesDecoded ?? 0) > 0, SMOKE_FIRST_FRAME_MS);
-  if (!framed) return finishSmoke({ code: "no_frames", detail: "no frame was decoded" });
+  void openSession(serial);
+  const session = () => sessions.get(serial);
+  const framed = await waitUntil(() => (session()?.player.stats().framesDecoded ?? 0) > 0, SMOKE_FIRST_FRAME_MS);
+  if (!framed) {
+    const ended = session()?.error;
+    return finishSmoke(ended ?? { code: "no_frames", detail: "no frame was decoded" });
+  }
   await sleep(SMOKE_SETTLE_MS);
-  const current = player;
-  const device = control;
-  if (smoke !== "running" || !current || !device) return;
-  const changed = current.waitForChange(SMOKE_INPUT_MS);
+  const current = session();
+  if (smoke !== "running" || !current) return;
+  const changed = current.player.waitForChange(SMOKE_INPUT_MS);
   const sentAt = performance.now();
-  device.button("recentApps");
+  current.control.button("recentApps");
   const changedAt = await changed;
-  device.button("back");
+  current.control.button("back");
   await sleep(SMOKE_RESTORE_MS);
   const input = { applied: changedAt !== null, latencyMs: changedAt === null ? null : Math.round(changedAt - sentAt) };
   await waitUntil(() => {
-    const audio = player?.audio.stats();
+    const audio = session()?.player.audio.stats();
     return audio === undefined || audio.peak >= SMOKE_TONE_LEVEL || audio.state === "unsupported";
   }, SMOKE_TONE_MS);
-  const audio = smokeAudio();
-  if (audio && audio.state === "playing") audio.toggled = await smokeToggleSound();
+  const audio = smokeAudio(current);
+  if (audio && audio.state === "playing") audio.toggled = await smokeToggleSound(current);
   await finishSmoke(undefined, input, audio);
 }
 
-function smokeAudio(): SmokeAudio | undefined {
-  const stats = player?.stats();
-  if (!stats) return undefined;
+function smokeAudio(session: MirrorSession): SmokeAudio {
+  const stats = session.player.stats();
   const offset = stats.avOffsetMs;
   return {
     state: stats.audio.state,
@@ -683,13 +635,12 @@ function smokeAudio(): SmokeAudio | undefined {
 }
 
 /** Turns sound off and on as the speaker button does: the device must stop capture, then play again. */
-async function smokeToggleSound(): Promise<boolean> {
-  const audio = player?.audio;
-  if (!audio) return false;
+async function smokeToggleSound(session: MirrorSession): Promise<boolean> {
+  const audio = session.player.audio;
   const stops = audio.stats().stops;
-  toggleSound();
+  host.setSound(session, false);
   const stopped = await waitUntil(() => audio.stats().stops > stops, SMOKE_TOGGLE_MS);
-  toggleSound();
+  host.setSound(session, true);
   const playing = await waitUntil(() => audio.current === "playing", SMOKE_TOGGLE_MS);
   return stopped && playing;
 }
@@ -697,7 +648,8 @@ async function smokeToggleSound(): Promise<boolean> {
 async function finishSmoke(error?: AppError, input?: SmokeInput, audio?: SmokeAudio) {
   if (smoke === "done" || smoke === "off") return;
   smoke = "done";
-  const stats = player?.stats() ?? null;
+  const session = activeSession();
+  const stats = session?.player.stats() ?? null;
   // A device older than Android 12 passes without sound: it says so instead.
   const soundOk =
     audio !== undefined && (audio.state === "unsupported" || (audio.heard && audio.inSync && audio.toggled));
@@ -714,7 +666,8 @@ async function finishSmoke(error?: AppError, input?: SmokeInput, audio?: SmokeAu
     stats,
     input: input ?? null,
     audio: audio ?? null,
-    view: view.kind,
+    view: session?.phase ?? notice.kind,
+    sessions: sessions.size,
     appearance: startup?.appearance ?? null,
   });
 }
@@ -736,6 +689,7 @@ async function main() {
   byId("brand-name").textContent = text.appName;
   byId("brand-tagline").textContent = text.tagline;
   byId("devices-heading").textContent = text.devicesHeading;
+  byId("details-heading").textContent = text.deviceDetails.heading;
   try {
     startup = await getStartup();
   } catch (e) {

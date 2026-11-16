@@ -55,6 +55,7 @@
   --p-radius-4: 4px;
   --p-radius-8: 8px;
   --p-radius-12: 12px;
+  --p-radius-16: 16px;
   --p-radius-full: 999px;
 
   --p-font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
@@ -118,8 +119,8 @@
   --space-l: var(--p-size-24);
   --space-xl: var(--p-size-32);
 
-  --radius-control: var(--p-radius-4);
-  --radius-panel: var(--p-radius-8);
+  --radius-control: var(--p-radius-8);
+  --radius-panel: var(--p-radius-16);
   --radius-media: var(--p-radius-12);
   --radius-pill: var(--p-radius-full);
 
@@ -189,8 +190,15 @@
 :root {
   --layout-gap: var(--space-s);
   --full-screen-padding: var(--space-xs);
+  /* B-007: side by side, a pane is at least this wide before the next one wraps. */
+  --pane-min-width: 22rem;
+  /* B-014: a card's padding, and the radius of what sits inside it: the card's radius minus the
+     padding, so the corners are concentric (TOK-10). */
+  --pane-padding: var(--space-xs);
+  --pane-inner-radius: var(--p-radius-12);
   --sidebar-width: 18rem;
   --sidebar-max-height-stacked: 40vh;
+  --sidebar-max-height-mirroring: 25vh;
   --brand-mark-size: 2.5rem;
   --device-min-height: 3.5rem;
   --message-max-width: 36rem;
@@ -199,6 +207,8 @@
 
   /* CMP-02: 40 px visible, extended to a 48 px hit area. */
   --button-height: 2.5rem;
+  /* B-014: buttons are pills, and icon buttons circles. */
+  --button-radius: var(--radius-pill);
   --button-hit-extend: 0.25rem;
   --button-bg: var(--color-surface);
   --button-fg: var(--color-text);
@@ -218,7 +228,7 @@
   --progress-to: 250%;
   --progress-static-opacity: 0.6;
 
-  --mirror-radius: var(--radius-media);
+  --mirror-radius: var(--pane-inner-radius);
   --mirror-bg: var(--color-media-bg);
   --mirror-shadow: var(--shadow-raised);
   /* Around the screen while the keyboard controls the device. */
